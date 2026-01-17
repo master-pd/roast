@@ -931,7 +931,7 @@ class ImageGenerator:
 # Singleton instance with lazy loading
 _image_generator_instance = None
 
-def get_image_generator() -> ProfessionalImageGenerator:
+def get_image_generator()
     """গ্লোবাল ইমেজ জেনারেটর ইনস্ট্যান্স রিটার্ন করে"""
     global _image_generator_instance
     
