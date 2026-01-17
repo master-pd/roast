@@ -1,14 +1,24 @@
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
-from typing import Dict, List, Tuple, Optional
-from pathlib import Path
+"""
+Image Generator for Roastify Bot - Termux Compatible
+Fixed for Pillow and Android/Termux issues
+"""
+
+import os
 import random
+import tempfile
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
+from typing import Dict, List, Tuple, Optional, Any
+from pathlib import Path
+import logging
 from config import Config
 from utils.logger import logger
 from utils.helpers import Helpers
 from utils.time_manager import TimeManager
-from .templates import TemplateManager
+from image_engine.templates import TemplateManager
 
 class ImageGenerator:
+    """ইমেজ জেনারেটর ক্লাস - Termux/Android compatible"""
+    
     def __init__(self):
         self.template_manager = TemplateManager()
         self.assets_path = Path(Config.ASSETS_PATH)
@@ -18,320 +28,373 @@ class ImageGenerator:
         # Ensure directories exist
         self.fonts_path.mkdir(parents=True, exist_ok=True)
         self.backgrounds_path.mkdir(parents=True, exist_ok=True)
+        
+        # Default font cache
+        self.default_font = None
+        self.font_cache = {}
+        
+        logger.info("ImageGenerator initialized (Termux compatible)")
     
     def create_roast_image(self, primary_text: str, secondary_text: str, 
                           user_id: int, user_photo_path: str = None) -> Image.Image:
-        """রোস্ট ইমেজ তৈরি করে"""
+        """রোস্ট ইমেজ তৈরি করে - Termux compatible"""
         try:
             # Get template
             template = self.template_manager.get_template(user_id)
             
             # Create base image
-            if "background" in template:
-                bg_path = self.backgrounds_path / template["background"]
-                if bg_path.exists():
-                    image = Image.open(bg_path).convert("RGBA")
-                    image = image.resize((Config.IMAGE_WIDTH, Config.IMAGE_HEIGHT))
-                else:
-                    image = self._create_gradient_background(template)
-            else:
-                image = self._create_gradient_background(template)
+            image = self._create_base_image(template)
             
-            # Apply effects
-            image = self._apply_background_effects(image, template)
-            
-            # Add user photo if provided
-            if user_photo_path and Path(user_photo_path).exists():
-                image = self._add_user_photo(image, user_photo_path, template)
+            # Add user photo if provided and exists
+            if user_photo_path and os.path.exists(user_photo_path):
+                try:
+                    image = self._add_user_photo(image, user_photo_path, template)
+                except Exception as e:
+                    logger.warning(f"Could not add user photo: {e}")
             
             # Prepare text
             draw = ImageDraw.Draw(image)
             
-            # Load fonts
-            primary_font = self._load_font(
+            # Load fonts with fallback
+            primary_font = self._load_font_safe(
                 template.get("font", "arial.ttf"),
-                template.get("font_size", 60)
+                template.get("font_size", 50)  # Reduced for Termux
             )
             
-            secondary_font = self._load_font(
+            secondary_font = self._load_font_safe(
                 template.get("font", "arial.ttf"),
-                template.get("sub_font_size", 30)
+                template.get("sub_font_size", 25)  # Reduced for Termux
             )
             
             # Get positions
             primary_pos = template.get("position", {"x": 540, "y": 400})
-            secondary_pos = template.get("sub_position", {"x": 540, "y": 500})
+            secondary_pos = template.get("sub_position", {"x": 540, "y": 480})
             
-            # Split text if too long
-            primary_lines = Helpers.split_text_for_image(primary_text, 25)
-            secondary_lines = Helpers.split_text_for_image(secondary_text, 35)
+            # Split text for display
+            primary_lines = Helpers.split_text_for_image(primary_text, 20)  # Reduced chars
+            secondary_lines = Helpers.split_text_for_image(secondary_text, 25)
             
-            # Draw primary text with effects
+            # Draw primary text
             primary_color = tuple(template.get("primary_color", (255, 255, 255)))
-            self._draw_text_with_effects(
+            self._draw_text_safe(
                 draw, primary_lines, primary_font, 
-                primary_pos, primary_color, template
+                primary_pos, primary_color, "primary"
             )
             
             # Draw secondary text
             secondary_color = tuple(template.get("secondary_color", (200, 200, 200)))
-            self._draw_text_with_effects(
+            self._draw_text_safe(
                 draw, secondary_lines, secondary_font,
-                secondary_pos, secondary_color, template, is_secondary=True
+                secondary_pos, secondary_color, "secondary"
             )
             
-            # Add decorative elements
-            image = self._add_decorative_elements(image, template)
+            # Add simple decorative elements
+            image = self._add_simple_decoration(image)
             
             return image
             
         except Exception as e:
             logger.error(f"Error creating image: {e}")
-            # Return a simple error image
-            return self._create_error_image()
+            return self._create_error_image_safe()
     
-    def _create_gradient_background(self, template: Dict) -> Image.Image:
-        """গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড তৈরি করে"""
-        image = Image.new('RGBA', (Config.IMAGE_WIDTH, Config.IMAGE_HEIGHT))
+    def _create_base_image(self, template: Dict) -> Image.Image:
+        """বেস ইমেজ তৈরি করে - Simple for Termux"""
+        # Use simpler method for Termux
+        width = min(Config.IMAGE_WIDTH, 720)  # Max 720 for Termux
+        height = min(Config.IMAGE_HEIGHT, 720)
+        
+        # Try to load background if exists
+        if "background" in template:
+            bg_path = self.backgrounds_path / template["background"]
+            if bg_path.exists():
+                try:
+                    image = Image.open(bg_path).convert("RGBA")
+                    return image.resize((width, height))
+                except:
+                    pass
+        
+        # Create gradient background
+        return self._create_simple_gradient(width, height)
+    
+    def _create_simple_gradient(self, width: int, height: int) -> Image.Image:
+        """সিম্পল গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড তৈরি করে"""
+        image = Image.new('RGBA', (width, height))
         draw = ImageDraw.Draw(image)
         
-        # Get theme-based colors
+        # Time-based colors
         theme = Helpers.get_time_based_theme()
         
         if theme["theme"] == "day":
-            color1 = (135, 206, 235)  # Light blue
-            color2 = (255, 255, 255)  # White
+            # Light gradient
+            for y in range(height):
+                ratio = y / height
+                r = int(135 + (120 * ratio))
+                g = int(206 + (49 * ratio))
+                b = int(235 + (20 * ratio))
+                draw.line([(0, y), (width, y)], fill=(r, g, b, 255))
         else:
-            color1 = (25, 25, 35)     # Dark blue
-            color2 = (50, 50, 70)     # Darker blue
-        
-        # Draw gradient
-        for y in range(Config.IMAGE_HEIGHT):
-            ratio = y / Config.IMAGE_HEIGHT
-            r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-            g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-            b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-            draw.line([(0, y), (Config.IMAGE_WIDTH, y)], fill=(r, g, b, 255))
+            # Dark gradient
+            for y in range(height):
+                ratio = y / height
+                r = int(25 + (25 * ratio))
+                g = int(25 + (25 * ratio))
+                b = int(35 + (35 * ratio))
+                draw.line([(0, y), (width, y)], fill=(r, g, b, 255))
         
         return image
     
-    def _apply_background_effects(self, image: Image.Image, template: Dict) -> Image.Image:
-        """ব্যাকগ্রাউন্ডে ইফেক্ট অ্যাপ্লাই করে"""
-        effects = template.get("effects", [])
+    def _load_font_safe(self, font_name: str, size: int):
+        """সেফ ফন্ট লোড করে - Termux compatible"""
+        cache_key = f"{font_name}_{size}"
         
-        if "blur" in effects:
-            image = image.filter(ImageFilter.GaussianBlur(radius=2))
+        if cache_key in self.font_cache:
+            return self.font_cache[cache_key]
         
-        if "vignette" in effects:
-            image = self._apply_vignette(image)
-        
-        if "noise" in effects:
-            image = self._add_noise(image, intensity=5)
-        
-        return image
+        try:
+            from PIL import ImageFont
+            
+            # Check Android/Termux font paths
+            font_paths = [
+                # Android system fonts
+                "/system/fonts/Roboto-Regular.ttf",
+                "/system/fonts/DroidSans.ttf",
+                "/system/fonts/NotoSansBengali-Regular.ttf",
+                "/system/fonts/NotoSans-Regular.ttf",
+                
+                # Termux fonts
+                "/data/data/com.termux/files/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/data/data/com.termux/files/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                
+                # Local assets
+                str(self.fonts_path / font_name),
+                str(self.fonts_path / "arial.ttf"),
+                str(self.fonts_path / "default.ttf"),
+                
+                # Fallback to font name
+                font_name,
+            ]
+            
+            for font_path in font_paths:
+                try:
+                    if os.path.exists(font_path):
+                        font = ImageFont.truetype(font_path, size)
+                        self.font_cache[cache_key] = font
+                        return font
+                except Exception as e:
+                    continue
+            
+            # Ultimate fallback - default font
+            logger.warning(f"Font {font_name} not found, using default")
+            font = ImageFont.load_default()
+            
+            # Try to scale default font
+            try:
+                # For default font, we need to handle differently
+                font = ImageFont.load_default()
+            except:
+                # Create a dummy font
+                font = ImageFont.load_default()
+            
+            self.font_cache[cache_key] = font
+            return font
+            
+        except Exception as e:
+            logger.error(f"Font loading error: {e}")
+            return ImageFont.load_default()
+    
+    def _draw_text_safe(self, draw: ImageDraw.Draw, lines: List[str], font, 
+                       position: Dict, color: Tuple, text_type: str):
+        """সেফ টেক্সট ড্র করে - Termux compatible"""
+        try:
+            # Calculate text dimensions using textbbox (Pillow 8.0+)
+            if hasattr(font, 'getbbox'):
+                # New method
+                bbox = font.getbbox(lines[0] if lines else "Test")
+                font_height = bbox[3] - bbox[1] if bbox else 20
+            elif hasattr(font, 'getsiz'):
+                # Old method
+                try:
+                    font_height = font.getsize(lines[0] if lines else "Test")[1]
+                except:
+                    font_height = 20
+            else:
+                font_height = 20
+            
+            line_height = font_height + 5
+            total_height = len(lines) * line_height
+            start_y = position["y"] - (total_height // 2)
+            
+            for i, line in enumerate(lines):
+                y_pos = start_y + (i * line_height)
+                
+                # Calculate text width
+                try:
+                    if hasattr(font, 'getlength'):
+                        text_width = font.getlength(line)
+                    elif hasattr(font, 'getsize'):
+                        text_width = font.getsize(line)[0]
+                    else:
+                        text_width = len(line) * 10  # Approximate
+                except:
+                    text_width = len(line) * 10
+                
+                x_pos = position["x"] - (text_width // 2)
+                
+                # Draw text with simple shadow for primary text
+                if text_type == "primary":
+                    # Simple shadow
+                    shadow_color = (0, 0, 0, 150)
+                    draw.text((x_pos + 2, y_pos + 2), line, font=font, fill=shadow_color)
+                
+                # Draw main text
+                draw.text((x_pos, y_pos), line, font=font, fill=color)
+                
+        except Exception as e:
+            logger.error(f"Error drawing text: {e}")
+            # Fallback: draw at center
+            try:
+                draw.text((position["x"], position["y"]), 
+                         " ".join(lines), 
+                         font=font, 
+                         fill=color,
+                         anchor="mm")
+            except:
+                # Last resort
+                draw.text((10, 10), " ".join(lines), font=font, fill=color)
     
     def _add_user_photo(self, image: Image.Image, photo_path: str, template: Dict) -> Image.Image:
-        """ইউজারের ফটো অ্যাড করে"""
+        """ইউজার ফটো যোগ করে - Simple version"""
         try:
+            # Load user image
             user_img = Image.open(photo_path).convert("RGBA")
             
-            # Crop to circle
-            user_img = self._crop_to_circle(user_img)
-            
             # Resize
-            size = 200
+            size = 150  # Smaller for Termux
             user_img = user_img.resize((size, size), Image.Resampling.LANCZOS)
             
-            # Apply effects
-            if "glass_effect" in template.get("photo_effects", []):
-                user_img = self._apply_glass_effect(user_img)
+            # Simple circular crop
+            mask = Image.new('L', (size, size), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse([(0, 0), (size, size)], fill=255)
+            
+            result = Image.new('RGBA', (size, size))
+            result.paste(user_img, (0, 0), mask)
+            user_img = result
             
             # Position
-            x = (Config.IMAGE_WIDTH - size) // 2
-            y = 100
+            x = (image.width - size) // 2
+            y = 50
             
-            # Create a shadow
-            shadow = Image.new('RGBA', (size + 10, size + 10), (0, 0, 0, 100))
-            shadow = self._crop_to_circle(shadow)
-            image.paste(shadow, (x - 5, y - 5), shadow)
-            
-            # Paste user image
+            # Paste onto image
             image.paste(user_img, (x, y), user_img)
             
             return image
             
         except Exception as e:
-            logger.error(f"Error adding user photo: {e}")
+            logger.warning(f"Could not add user photo: {e}")
             return image
     
-    def _crop_to_circle(self, image: Image.Image) -> Image.Image:
-        """ইমেজকে বৃত্তাকারে ক্রপ করে"""
-        mask = Image.new('L', image.size, 0)
-        draw = ImageDraw.Draw(mask)
-        draw.ellipse([(0, 0), image.size], fill=255)
-        
-        result = Image.new('RGBA', image.size)
-        result.paste(image, (0, 0), mask)
-        return result
-    
-    def _load_font(self, font_name: str, size: int) -> ImageFont.FreeTypeFont:
-        """ফন্ট লোড করে"""
-        font_paths = [
-            self.fonts_path / font_name,
-            Path(font_name),
-            Path("fonts") / font_name
-        ]
-        
-        for font_path in font_paths:
-            if font_path.exists():
-                try:
-                    return ImageFont.truetype(str(font_path), size)
-                except:
-                    continue
-        
-        # Fallback to default font
-        return ImageFont.load_default()
-    
-    def _draw_text_with_effects(self, draw: ImageDraw.Draw, lines: List[str], 
-                               font: ImageFont.FreeTypeFont, position: Dict,
-                               color: Tuple, template: Dict, is_secondary: bool = False):
-        """টেক্সট ইফেক্ট সহ ড্র করে"""
-        effects = template.get("effects", [])
-        
-        # Calculate total height
-        line_height = font.size + 10
-        total_height = len(lines) * line_height
-        start_y = position["y"] - (total_height // 2)
-        
-        for i, line in enumerate(lines):
-            y_pos = start_y + (i * line_height)
+    def _add_simple_decoration(self, image: Image.Image) -> Image.Image:
+        """সিম্পল ডেকোরেশন যোগ করে"""
+        try:
+            draw = ImageDraw.Draw(image)
+            width, height = image.size
             
-            # Calculate text width for centering
-            bbox = draw.textbbox((0, 0), line, font=font)
-            text_width = bbox[2] - bbox[0]
-            x_pos = position["x"] - (text_width // 2)
+            # Simple border
+            border_color = (100, 100, 100, 200)
+            draw.rectangle([(5, 5), (width-5, height-5)], 
+                          outline=border_color, 
+                          width=2)
             
-            # Apply effects
-            if "shadow" in effects and not is_secondary:
-                # Draw shadow
-                shadow_offset = 4
-                draw.text(
-                    (x_pos + shadow_offset, y_pos + shadow_offset),
-                    line, font=font, fill=(0, 0, 0, 150)
-                )
+            # Simple corners
+            corner_size = 20
+            corners = [
+                (5, 5), (width-corner_size-5, 5),
+                (5, height-corner_size-5), (width-corner_size-5, height-corner_size-5)
+            ]
             
-            if "outline" in effects and not is_secondary:
-                # Draw outline
-                outline_size = 2
-                for ox in range(-outline_size, outline_size + 1):
-                    for oy in range(-outline_size, outline_size + 1):
-                        if ox != 0 or oy != 0:
-                            draw.text(
-                                (x_pos + ox, y_pos + oy),
-                                line, font=font, fill=(0, 0, 0, 200)
-                            )
+            for x, y in corners:
+                draw.rectangle([(x, y), (x+corner_size, y+corner_size)], 
+                              outline=border_color, 
+                              width=1)
             
-            # Draw main text
-            draw.text((x_pos, y_pos), line, font=font, fill=color)
+            return image
+        except:
+            return image
     
-    def _apply_vignette(self, image: Image.Image) -> Image.Image:
-        """ভিগনেট ইফেক্ট অ্যাপ্লাই করে"""
-        width, height = image.size
-        mask = Image.new('L', (width, height), 0)
-        draw = ImageDraw.Draw(mask)
-        
-        # Draw white ellipse
-        ellipse_bbox = [(-width//2, -height//2), (width*3//2, height*3//2)]
-        draw.ellipse(ellipse_bbox, fill=255)
-        
-        # Apply Gaussian blur to mask
-        mask = mask.filter(ImageFilter.GaussianBlur(radius=width//4))
-        
-        # Create vignette
-        vignette = Image.new('RGBA', (width, height), (0, 0, 0, 150))
-        image.paste(vignette, (0, 0), mask)
-        
-        return image
-    
-    def _add_noise(self, image: Image.Image, intensity: int = 5) -> Image.Image:
-        """নয়েজ/গ্রেইন অ্যাড করে"""
-        from PIL import ImageMath
-        
-        noise = Image.new('RGBA', image.size)
-        pixels = noise.load()
-        
-        for x in range(image.width):
-            for y in range(image.height):
-                if random.random() < 0.1:  # 10% pixels
-                    alpha = random.randint(200, 255)
-                    gray = random.randint(0, intensity)
-                    pixels[x, y] = (gray, gray, gray, alpha)
-        
-        return Image.alpha_composite(image, noise)
-    
-    def _apply_glass_effect(self, image: Image.Image) -> Image.Image:
-        """গ্লাস ইফেক্ট অ্যাপ্লাই করে"""
-        # Apply slight blur
-        blurred = image.filter(ImageFilter.GaussianBlur(radius=1))
-        
-        # Create glass effect with transparency
-        glass = Image.new('RGBA', image.size, (255, 255, 255, 30))
-        
-        # Composite images
-        result = Image.alpha_composite(blurred, glass)
-        return result
-    
-    def _add_decorative_elements(self, image: Image.Image, template: Dict) -> Image.Image:
-        """ডেকোরেটিভ এলিমেন্ট অ্যাড করে"""
-        draw = ImageDraw.Draw(image)
-        width, height = image.size
-        
-        # Add border if needed
-        border_color = template.get("border_color", (100, 100, 100, 150))
-        border_width = 10
-        draw.rectangle(
-            [(border_width, border_width), 
-             (width - border_width, height - border_width)],
-            outline=border_color, width=2
-        )
-        
-        # Add corner decorations
-        corner_size = 30
-        for x, y in [(0, 0), (width - corner_size, 0), 
-                     (0, height - corner_size), (width - corner_size, height - corner_size)]:
-            draw.rectangle(
-                [(x, y), (x + corner_size, y + corner_size)],
-                outline=border_color, width=2
-            )
-        
-        return image
-    
-    def _create_error_image(self) -> Image.Image:
-        """এরর ইমেজ তৈরি করে"""
-        image = Image.new('RGBA', (Config.IMAGE_WIDTH, Config.IMAGE_HEIGHT), 
-                         (255, 200, 200, 255))
-        draw = ImageDraw.Draw(image)
-        
-        font = self._load_font("arial.ttf", 40)
-        text = "ইমেজ তৈরি করতে সমস্যা!"
-        
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        x = (Config.IMAGE_WIDTH - text_width) // 2
-        y = Config.IMAGE_HEIGHT // 2
-        
-        draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
-        
-        return image
+    def _create_error_image_safe(self) -> Image.Image:
+        """এরর ইমেজ তৈরি করে - Termux compatible"""
+        try:
+            width = 400
+            height = 200
+            image = Image.new('RGBA', (width, height), (255, 200, 200, 255))
+            draw = ImageDraw.Draw(image)
+            
+            font = self._load_font_safe("arial.ttf", 24)
+            text = "ইমেজ তৈরি সমস্যা"
+            
+            # Simple text at center
+            draw.text((width//2, height//2), 
+                     text, 
+                     font=font, 
+                     fill=(255, 0, 0, 255),
+                     anchor="mm")
+            
+            return image
+        except:
+            # Ultimate fallback
+            return Image.new('RGBA', (400, 200), (255, 255, 255, 255))
     
     def save_image(self, image: Image.Image, filename: str = None) -> str:
-        """ইমেজ ফাইল হিসেবে সেভ করে"""
-        if filename is None:
-            timestamp = TimeManager.get_current_time().strftime("%Y%m%d_%H%M%S")
-            filename = f"roast_{timestamp}.png"
-        
-        output_path = Path("generated") / filename
-        output_path.parent.mkdir(exist_ok=True)
-        
-        image.save(output_path, "PNG", optimize=True)
-        return str(output_path)
+        """ইমেজ ফাইল হিসেবে সেভ করে - Termux compatible"""
+        try:
+            if filename is None:
+                timestamp = TimeManager.get_current_time().strftime("%Y%m%d_%H%M%S")
+                filename = f"roast_{timestamp}.png"
+            
+            output_path = Path("generated") / filename
+            output_path.parent.mkdir(exist_ok=True)
+            
+            # Save with optimization for Termux
+            image.save(
+                output_path, 
+                "PNG", 
+                optimize=True,
+                compress_level=6  # Balanced compression
+            )
+            
+            return str(output_path)
+        except Exception as e:
+            logger.error(f"Error saving image: {e}")
+            # Save to temp file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+            image.save(temp_file.name, "PNG")
+            return temp_file.name
+    
+    def cleanup_temp_files(self):
+        """টেম্প ফাইল ক্লিনআপ করে"""
+        try:
+            import glob
+            import time
+            
+            # Clean old generated images (older than 1 day)
+            gen_path = Path("generated")
+            if gen_path.exists():
+                for img_file in gen_path.glob("*.png"):
+                    file_age = time.time() - img_file.stat().st_mtime
+                    if file_age > 86400:  # 1 day
+                        img_file.unlink()
+                        
+            # Clean temp files
+            temp_dir = Path("temp")
+            if temp_dir.exists():
+                for temp_file in temp_dir.glob("*"):
+                    file_age = time.time() - temp_file.stat().st_mtime
+                    if file_age > 3600:  # 1 hour
+                        temp_file.unlink()
+                        
+        except Exception as e:
+            logger.error(f"Error cleaning temp files: {e}")
+
+# Global instance
+image_generator = ImageGenerator()
