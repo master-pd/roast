@@ -1,228 +1,183 @@
 """
-Image Generator for Roastify Bot - Termux Compatible
-Fully Fixed with Bengali support
+Simple Image Generator for Roastify Bot
+Termux Compatible - No font issues
 """
 
 import os
 import random
-import tempfile
 from PIL import Image, ImageDraw, ImageFont
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from pathlib import Path
 from config import Config
 from utils.logger import logger
-from utils.helpers import Helpers
 from utils.time_manager import TimeManager
-from image_engine.templates import TemplateManager
 
-class ImageGenerator:
-    """ইমেজ জেনারেটর ক্লাস - সম্পূর্ণ ফিক্সড"""
+class SimpleImageGenerator:
+    """সিম্পল ইমেজ জেনারেটর - কোনো ফন্ট সমস্যা নেই"""
     
     def __init__(self):
-        self.template_manager = TemplateManager()
         self.assets_path = Path(Config.ASSETS_PATH)
         self.fonts_path = Path(Config.FONTS_PATH)
-        self.backgrounds_path = Path(Config.BACKGROUNDS_PATH)
-        
-        # Ensure directories exist
         self.fonts_path.mkdir(parents=True, exist_ok=True)
-        self.backgrounds_path.mkdir(parents=True, exist_ok=True)
         
-        # Font cache
-        self.font_cache = {}
+        # Default font (always available)
+        self.default_font = None
+        self._setup_default_font()
         
-        # Create default fonts
-        self._setup_default_fonts()
-        
-        logger.info("ImageGenerator initialized")
+        logger.info("SimpleImageGenerator initialized")
     
-    def _setup_default_fonts(self):
+    def _setup_default_font(self):
         """ডিফল্ট ফন্ট সেটআপ করে"""
         try:
-            # Try to create symlinks to system fonts
-            system_fonts = {
-                "arial.ttf": "/system/fonts/Roboto-Regular.ttf",
-                "comic.ttf": "/system/fonts/DroidSans.ttf",
-                "bengali.ttf": "/system/fonts/NotoSansBengali-Regular.ttf"
-            }
+            # Try to load any available font
+            font_paths = [
+                "/system/fonts/Roboto-Regular.ttf",
+                "/system/fonts/DroidSans.ttf",
+                "/system/fonts/NotoSansBengali-Regular.ttf",
+                str(self.fonts_path / "arial.ttf"),
+                str(self.fonts_path / "default.ttf"),
+            ]
             
-            for local_name, system_path in system_fonts.items():
-                local_path = self.fonts_path / local_name
-                if not local_path.exists() and os.path.exists(system_path):
-                    try:
-                        os.symlink(system_path, local_path)
-                        logger.info(f"Created symlink: {local_name} -> {system_path}")
-                    except:
-                        # Try to copy if symlink fails
-                        import shutil
-                        shutil.copy2(system_path, local_path)
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    self.default_font = ImageFont.truetype(font_path, 40)
+                    logger.info(f"Using font: {font_path}")
+                    return
+            
+            # Ultimate fallback
+            self.default_font = ImageFont.load_default()
+            logger.info("Using default font")
+            
         except Exception as e:
-            logger.warning(f"Could not setup system fonts: {e}")
+            logger.error(f"Font setup error: {e}")
+            self.default_font = ImageFont.load_default()
     
     def create_roast_image(self, primary_text: str, secondary_text: str, 
-                          user_id: int, user_photo_path: str = None) -> Image.Image:
-        """রোস্ট ইমেজ তৈরি করে"""
+                          user_id: int) -> Image.Image:
+        """রোস্ট ইমেজ তৈরি করে - খুব সহজ"""
         try:
-            # Get template
-            template = self.template_manager.get_template(user_id)
+            # Create simple background
+            width = Config.IMAGE_WIDTH
+            height = Config.IMAGE_HEIGHT
             
-            # Create base image
-            image = self._create_base_image(template)
+            image = self._create_simple_background(width, height)
+            draw = ImageDraw.Draw(image)
             
             # Add text
-            image = self._add_text_to_image(image, primary_text, secondary_text, template)
+            image = self._add_simple_text(image, draw, primary_text, secondary_text)
             
-            # Add user photo if available
-            if user_photo_path and os.path.exists(user_photo_path):
-                try:
-                    image = self._add_user_photo_simple(image, user_photo_path)
-                except Exception as e:
-                    logger.warning(f"Could not add user photo: {e}")
+            # Add border
+            draw.rectangle([(5, 5), (width-5, height-5)], 
+                          outline=(100, 100, 100), 
+                          width=3)
             
             return image
             
         except Exception as e:
-            logger.error(f"Error creating image: {e}")
+            logger.error(f"Error in create_roast_image: {e}")
             return self._create_error_image()
     
-    def _create_base_image(self, template: Dict) -> Image.Image:
-        """বেস ইমেজ তৈরি করে"""
-        width = Config.IMAGE_WIDTH
-        height = Config.IMAGE_HEIGHT
-        
-        # Try to use template background
-        if "background" in template:
-            bg_path = self.backgrounds_path / template["background"]
-            if bg_path.exists():
-                try:
-                    image = Image.open(bg_path).convert("RGBA")
-                    return image.resize((width, height))
-                except:
-                    pass
-        
-        # Create gradient background
-        return self._create_gradient_background(width, height)
-    
-    def _create_gradient_background(self, width: int, height: int) -> Image.Image:
-        """গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড তৈরি করে"""
-        image = Image.new('RGB', (width, height))
-        draw = ImageDraw.Draw(image)
-        
-        # Time-based colors
+    def _create_simple_background(self, width: int, height: int) -> Image.Image:
+        """সিম্পল ব্যাকগ্রাউন্ড তৈরি করে"""
+        # Create gradient based on time
         is_day = TimeManager.is_day_time()
         
         if is_day:
-            # Day gradient: Light blue to white
-            for y in range(height):
-                ratio = y / height
-                r = int(135 + (120 * ratio))
-                g = int(206 + (49 * ratio))
-                b = int(235 + (20 * ratio))
-                draw.line([(0, y), (width, y)], fill=(r, g, b))
+            # Day theme
+            colors = [
+                (135, 206, 235),  # Light blue
+                (176, 224, 230),  # Powder blue
+                (240, 248, 255)   # Alice blue
+            ]
         else:
-            # Night gradient: Dark blue to black
-            for y in range(height):
-                ratio = y / height
-                r = int(25 + (30 * ratio))
-                g = int(25 + (30 * ratio))
-                b = int(35 + (30 * ratio))
-                draw.line([(0, y), (width, y)], fill=(r, g, b))
+            # Night theme
+            colors = [
+                (25, 25, 35),     # Dark blue
+                (40, 40, 50),     # Darker blue
+                (60, 60, 70)      # Dark gray
+            ]
+        
+        # Create gradient
+        image = Image.new('RGB', (width, height))
+        for y in range(height):
+            ratio = y / height
+            color_idx = int(ratio * (len(colors) - 1))
+            next_idx = min(color_idx + 1, len(colors) - 1)
+            
+            r1, g1, b1 = colors[color_idx]
+            r2, g2, b2 = colors[next_idx]
+            
+            r = int(r1 + (r2 - r1) * (ratio * len(colors) - color_idx))
+            g = int(g1 + (g2 - g1) * (ratio * len(colors) - color_idx))
+            b = int(b1 + (b2 - b1) * (ratio * len(colors) - color_idx))
+            
+            for x in range(width):
+                image.putpixel((x, y), (r, g, b))
         
         return image
     
-    def _add_text_to_image(self, image: Image.Image, primary_text: str, 
-                          secondary_text: str, template: Dict) -> Image.Image:
-        """টেক্সট ইমেজে যোগ করে"""
-        draw = ImageDraw.Draw(image)
+    def _add_simple_text(self, image: Image.Image, draw: ImageDraw.Draw,
+                        primary_text: str, secondary_text: str) -> Image.Image:
+        """সিম্পল টেক্সট যোগ করে"""
         width, height = image.size
         
-        # Load fonts
-        primary_font = self._load_font_safe(
-            template.get("font", "arial.ttf"),
-            template.get("font_size", 48)
-        )
+        # Prepare text
+        primary_lines = self._wrap_text(primary_text, 25)
+        secondary_lines = self._wrap_text(secondary_text, 35)
         
-        secondary_font = self._load_font_safe(
-            template.get("font", "arial.ttf"),
-            template.get("sub_font_size", 24)
-        )
+        # Calculate positions
+        primary_height = len(primary_lines) * 50
+        secondary_height = len(secondary_lines) * 30
         
-        # Get colors
-        primary_color = tuple(template.get("primary_color", (255, 255, 255)))
-        secondary_color = tuple(template.get("secondary_color", (200, 200, 200)))
+        total_height = primary_height + secondary_height + 40
+        start_y = (height - total_height) // 2
         
-        # Draw primary text (centered)
-        primary_lines = self._wrap_text(primary_text, primary_font, width - 100)
-        primary_y = height // 3
-        
+        # Draw primary text
+        font_large = self._get_font(48)
         for i, line in enumerate(primary_lines):
-            text_width = self._get_text_width(line, primary_font)
+            text_width = self._get_text_width(line, font_large)
             x = (width - text_width) // 2
-            y = primary_y + (i * (self._get_font_height(primary_font) + 10))
+            y = start_y + (i * 50)
             
-            # Add shadow for primary text
-            shadow_color = (0, 0, 0, 128)
-            draw.text((x + 2, y + 2), line, font=primary_font, fill=shadow_color)
-            draw.text((x, y), line, font=primary_font, fill=primary_color)
+            # Shadow
+            draw.text((x+2, y+2), line, font=font_large, fill=(0, 0, 0, 128))
+            # Main text
+            draw.text((x, y), line, font=font_large, fill=(255, 255, 255))
         
         # Draw secondary text
-        secondary_lines = self._wrap_text(secondary_text, secondary_font, width - 100)
-        secondary_y = height * 2 // 3
+        font_small = self._get_font(24)
+        text_y = start_y + primary_height + 20
         
         for i, line in enumerate(secondary_lines):
-            text_width = self._get_text_width(line, secondary_font)
+            text_width = self._get_text_width(line, font_small)
             x = (width - text_width) // 2
-            y = secondary_y + (i * (self._get_font_height(secondary_font) + 5))
-            draw.text((x, y), line, font=secondary_font, fill=secondary_color)
+            y = text_y + (i * 30)
+            draw.text((x, y), line, font=font_small, fill=(200, 200, 200))
         
         return image
     
-    def _load_font_safe(self, font_name: str, size: int) -> ImageFont.FreeTypeFont:
-        """সেফ ফন্ট লোড করে"""
-        cache_key = f"{font_name}_{size}"
-        
-        if cache_key in self.font_cache:
-            return self.font_cache[cache_key]
-        
+    def _get_font(self, size: int):
+        """ফন্ট পায়"""
         try:
-            # Try local fonts first
-            local_path = self.fonts_path / font_name
-            if local_path.exists():
-                font = ImageFont.truetype(str(local_path), size)
-                self.font_cache[cache_key] = font
-                return font
-            
-            # Try system fonts
-            for system_font in Config.FONT_FALLBACKS:
-                if os.path.exists(system_font):
-                    try:
-                        font = ImageFont.truetype(system_font, size)
-                        self.font_cache[cache_key] = font
-                        return font
-                    except:
-                        continue
-            
-            # Fallback to default font
-            font = ImageFont.load_default()
-            self.font_cache[cache_key] = font
-            return font
-            
-        except Exception as e:
-            logger.error(f"Font loading error: {e}")
-            return ImageFont.load_default()
+            if self.default_font:
+                # Try to scale default font
+                return ImageFont.truetype(self.default_font.path, size)
+        except:
+            pass
+        
+        # Fallback to default
+        return ImageFont.load_default()
     
-    def _wrap_text(self, text: str, font, max_width: int) -> List[str]:
+    def _wrap_text(self, text: str, max_chars: int) -> List[str]:
         """টেক্সট লাইনে ভাগ করে"""
         words = text.split()
         lines = []
         current_line = []
         
         for word in words:
-            current_line.append(word)
-            line_text = ' '.join(current_line)
-            
-            if self._get_text_width(line_text, font) > max_width:
-                current_line.pop()
+            if len(' '.join(current_line + [word])) <= max_chars:
+                current_line.append(word)
+            else:
                 if current_line:
                     lines.append(' '.join(current_line))
                 current_line = [word]
@@ -233,94 +188,49 @@ class ImageGenerator:
         return lines if lines else [text]
     
     def _get_text_width(self, text: str, font) -> int:
-        """টেক্সটের প্রস্থ বের করে"""
+        """টেক্সট প্রস্থ বের করে"""
         try:
-            # Try multiple methods
-            if hasattr(font, 'getlength'):
-                return int(font.getlength(text))
+            if hasattr(font, 'getbbox'):
+                bbox = font.getbbox(text)
+                return bbox[2] - bbox[0] if bbox else len(text) * 10
             elif hasattr(font, 'getsize'):
                 return font.getsize(text)[0]
             else:
-                # Approximate
-                return len(text) * font.size // 2
+                return len(text) * 10
         except:
             return len(text) * 10
     
-    def _get_font_height(self, font) -> int:
-        """ফন্টের উচ্চতা বের করে"""
-        try:
-            if hasattr(font, 'getbbox'):
-                bbox = font.getbbox("Ag")
-                return bbox[3] - bbox[1] if bbox else font.size
-            elif hasattr(font, 'getsize'):
-                return font.getsize("Ag")[1]
-            else:
-                return font.size + 5
-        except:
-            return 20
-    
-    def _add_user_photo_simple(self, image: Image.Image, photo_path: str) -> Image.Image:
-        """ইউজার ফটো যোগ করে (সিম্পল)"""
-        try:
-            user_img = Image.open(photo_path).convert("RGBA")
-            user_img = user_img.resize((150, 150))
-            
-            # Position at top center
-            x = (image.width - 150) // 2
-            y = 20
-            
-            # Create circular mask
-            mask = Image.new('L', (150, 150), 0)
-            draw = ImageDraw.Draw(mask)
-            draw.ellipse([(0, 0), (150, 150)], fill=255)
-            
-            # Apply mask
-            user_img.putalpha(mask)
-            
-            # Paste onto image
-            image.paste(user_img, (x, y), user_img)
-            
-            return image
-        except Exception as e:
-            logger.warning(f"Could not add user photo: {e}")
-            return image
-    
     def _create_error_image(self) -> Image.Image:
         """এরর ইমেজ তৈরি করে"""
-        width = 400
-        height = 200
-        
-        image = Image.new('RGB', (width, height), (255, 200, 200))
+        image = Image.new('RGB', (400, 200), (255, 200, 200))
         draw = ImageDraw.Draw(image)
         
-        font = self._load_font_safe("arial.ttf", 20)
-        text = "ইমেজ তৈরি সমস্যা"
-        
-        text_width = self._get_text_width(text, font)
-        x = (width - text_width) // 2
-        y = (height - self._get_font_height(font)) // 2
-        
-        draw.text((x, y), text, font=font, fill=(255, 0, 0))
+        # Simple text without font issues
+        text = "রোস্ট তৈরি হচ্ছে..."
+        draw.text((100, 80), text, fill=(255, 0, 0))
         
         return image
     
-    def save_image(self, image: Image.Image, filename: str = None) -> str:
-        """ইমেজ ফাইল হিসেবে সেভ করে"""
+    def save_image(self, image: Image.Image) -> str:
+        """ইমেজ সেভ করে"""
         try:
-            if filename is None:
-                timestamp = TimeManager.get_current_time().strftime("%Y%m%d_%H%M%S")
-                filename = f"roast_{timestamp}.png"
+            timestamp = TimeManager.get_current_time().strftime("%Y%m%d_%H%M%S")
+            filename = f"roast_{timestamp}.png"
             
-            output_path = Path("generated") / filename
-            output_path.parent.mkdir(exist_ok=True)
+            output_dir = Path("generated")
+            output_dir.mkdir(exist_ok=True)
             
-            # Save with optimization
+            output_path = output_dir / filename
             image.save(output_path, "PNG", optimize=True)
             
             return str(output_path)
         except Exception as e:
             logger.error(f"Error saving image: {e}")
             # Save to temp file
+            import tempfile
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
             image.save(temp_file.name, "PNG")
             return temp_file.name
+
+# Global instance
+image_generator = SimpleImageGenerator()
