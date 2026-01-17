@@ -1,5 +1,5 @@
-python-telegram-bot[job-queue]==20.7
-pillow==10.3.0
+python-telegram-bot==20.7
+pillow>=10.0.0
 python-dotenv==1.0.0
 sqlalchemy==2.0.29
 apscheduler==3.10.4
