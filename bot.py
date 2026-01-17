@@ -72,7 +72,8 @@ class RoastifyBot:
             logger.info("Starting RoastifyBot...")
             await self.application.initialize()
             await self.application.start()
-            await self.application.updater.start_polling()
+            await self.application.run_polling
+            #await self.application.updater.start_polling()
             
             logger.info("✅ RoastifyBot is now running!")
             
