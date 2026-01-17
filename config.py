@@ -9,7 +9,7 @@ class Config:
     
     # Admin IDs
     OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
-    ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "987654321,1122334455").split(",")))
+    ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "987654321,1122334455").split(","))) if os.getenv("ADMIN_IDS") else []
     
     # Database
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///roastify.db")
@@ -19,8 +19,8 @@ class Config:
     MIN_INPUT_LENGTH = int(os.getenv("MIN_INPUT_LENGTH", "4"))
     
     # Image Settings
-    IMAGE_WIDTH = int(os.getenv("IMAGE_WIDTH", "1080"))
-    IMAGE_HEIGHT = int(os.getenv("IMAGE_HEIGHT", "1080"))
+    IMAGE_WIDTH = int(os.getenv("IMAGE_WIDTH", "720"))  # Reduced for Termux
+    IMAGE_HEIGHT = int(os.getenv("IMAGE_HEIGHT", "720"))
     DEFAULT_FONT = os.getenv("DEFAULT_FONT", "arial.ttf")
     
     # Paths
@@ -33,17 +33,26 @@ class Config:
     TIMEZONE = os.getenv("TIMEZONE", "Asia/Dhaka")
     
     # Safety
-    DISALLOWED_WORDS = os.getenv("DISALLOWED_WORDS", "").split(",")
+    DISALLOWED_WORDS = os.getenv("DISALLOWED_WORDS", "").split(",") if os.getenv("DISALLOWED_WORDS") else []
     
     # Vote System
     VOTE_WINDOW = int(os.getenv("VOTE_WINDOW", "300"))
+    SELF_VOTE_ALLOWED = os.getenv("SELF_VOTE_ALLOWED", "false").lower() == "true"
     
     # Reaction System
     MAX_REACTIONS_PER_HOUR = int(os.getenv("MAX_REACTIONS_PER_HOUR", "20"))
     REACTION_COOLDOWN = int(os.getenv("REACTION_COOLDOWN", "15"))
     
     # Welcome Messages (comma separated)
-    WELCOME_MESSAGES = os.getenv("WELCOME_MESSAGES", "স্বাগতম!,বট চালু হয়েছে!,রোস্টের জন্য প্রস্তুত!").split(",")
+    WELCOME_MESSAGES = os.getenv("WELCOME_MESSAGES", "স্বাগতম!,বট চালু হয়েছে!,রোস্টের জন্য প্রস্তুত!").split(",") if os.getenv("WELCOME_MESSAGES") else []
+    
+    # Font fallbacks for Termux
+    FONT_FALLBACKS = [
+        "/system/fonts/Roboto-Regular.ttf",
+        "/system/fonts/DroidSans.ttf",
+        "/system/fonts/NotoSansBengali-Regular.ttf",
+        "/data/data/com.termux/files/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    ]
     
     @classmethod
     def validate(cls):
@@ -52,3 +61,4 @@ class Config:
             raise ValueError("BOT_TOKEN is required in environment variables")
         if not cls.BOT_USERNAME:
             raise ValueError("BOT_USERNAME is required")
+        return True
