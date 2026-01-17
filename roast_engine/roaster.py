@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple, Optional
 from config import Config
 from utils.text_processor import TextProcessor
 from utils.logger import logger
-roast_engine/roaster.py
+from roast_engine.safety_check import SafetyChecker
 
 class RoastEngine:
     def __init__(self):
