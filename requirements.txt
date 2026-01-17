@@ -1,0 +1,10 @@
+python-telegram-bot[job-queue]==20.7
+pillow==10.3.0
+python-dotenv==1.0.0
+sqlalchemy==2.0.29
+apscheduler==3.10.4
+emoji==2.11.3
+pytz==2024.1
+requests==2.31.0
+python-multipart==0.0.9
+coloredlogs==15.0.1
