@@ -55,7 +55,7 @@ except ImportError:
             return datetime.now()
 
 
-class ImageGenerator:
+class ProfessionalImageGenerator:
     """প্রফেশনাল ইমেজ জেনারেটর - উন্নত ভার্সন"""
     
     def __init__(self):
