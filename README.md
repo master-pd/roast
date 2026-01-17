@@ -46,8 +46,3 @@ A smart Bangla roast bot with 3D image generation and social features for Telegr
    - Free tier available
 
 ### Deployment Steps
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/roastify-bot.git
-   cd roastify-bot
