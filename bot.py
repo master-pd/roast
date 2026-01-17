@@ -37,7 +37,8 @@ from database.storage import StorageManager
 from database.models import init_database, User
 from roast_engine.roaster import RoastEngine
 from roast_engine.safety_check import safety_checker
-from image_engine.image_generator import image_generator
+from image_engine.image_generator import get_image_generator
+#from image_engine.image_generator import image_generator
 from features.welcome_system import AdvancedWelcomeSystem
 #from features.welcome_system import WelcomeSystem
 from features.vote_system import VoteSystem
