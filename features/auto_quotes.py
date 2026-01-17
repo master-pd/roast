@@ -1,4 +1,5 @@
 import random
+from PIL import Image
 from datetime import datetime
 from typing import Dict, List
 from telegram.ext import ContextTypes
