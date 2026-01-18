@@ -1086,8 +1086,7 @@ Use the buttons below to manage different aspects of the bot.
             f"<b>Name:</b> {name}\n"
             f"<b>Photo:</b> {has_photo}\n\n"
             f"Click Confirm to create the roast:",
-            reply_markup=reply_markup,
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=reply_markup
         )
         return CONFIRM
     
