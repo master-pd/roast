@@ -12,7 +12,6 @@ import traceback
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from io import BytesIO
-from features.auto_quotes import AutoQuotes
 
 # Telegram imports
 from telegram import (
@@ -56,9 +55,10 @@ from features.vote_system import VoteSystem
 from features.mention_system import MentionSystem
 from features.reaction_system import ReactionSystem
 from features.admin_protection import AdminProtection
-from features.auto_quotes import AutoQuoteSystem
+from features.auto_quotes import AutoQuotes
 from features.sticker_maker import StickerMaker
 from features.quote_of_day import QuoteOfDay
+
 
 class RoastifyBot:
     """রোস্টিফাই বট - Advanced Professional Version"""
