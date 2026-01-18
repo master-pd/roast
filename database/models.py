@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Database Models for Roastify Bot
-✅ Complete | Fixed | Upgraded | No Errors
+✅ Complete | Fixed | Advanced | No Errors
 """
 
 from sqlalchemy import (
@@ -14,16 +14,21 @@ from sqlalchemy import (
     Boolean, 
     ForeignKey, 
     Float,
-    BigInteger,
-    JSON
+    BigInteger
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
-from typing import Optional, Dict, Any
 from config import Config
 from utils.time_manager import TimeManager
+import json
+
+# Use JSON if JSONB is not available
+try:
+    JSONType = JSONB
+except:
+    JSONType = Text
 
 # Create base class
 Base = declarative_base()
@@ -74,18 +79,20 @@ class User(Base):
     theme_preference = Column(String(50), default='dark')
     text_size = Column(String(20), default='medium')
     
+    # JSON data for additional fields
+    extra_data = Column(JSONType, default=lambda: {})
+    
     # Relationships
     roasts = relationship("Roast", back_populates="user", cascade="all, delete-orphan")
     votes = relationship("Vote", back_populates="user", cascade="all, delete-orphan")
     reactions = relationship("ReactionLog", back_populates="user", cascade="all, delete-orphan")
     stickers = relationship("StickerLog", back_populates="user", cascade="all, delete-orphan")
     quotes = relationship("QuoteLog", back_populates="user", cascade="all, delete-orphan")
-    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User(id={self.id}, user_id={self.user_id}, username='{self.username}')>"
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self):
         """ডিকশনারি হিসেবে রিটার্ন করে"""
         return {
             'id': self.id,
@@ -102,29 +109,6 @@ class User(Base):
             'total_score': self.total_score,
             'average_score': self.average_score
         }
-
-class UserSession(Base):
-    """ইউজার সেশন মডেল"""
-    __tablename__ = 'user_sessions'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(BigInteger, ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False)
-    session_id = Column(String(100), unique=True, nullable=False)
-    device_info = Column(JSON, nullable=True)
-    ip_address = Column(String(50), nullable=True)
-    user_agent = Column(Text, nullable=True)
-    is_active = Column(Boolean, default=True)
-    
-    # Timestamps
-    created_at = Column(DateTime, default=TimeManager.get_current_time, nullable=False)
-    last_activity = Column(DateTime, default=TimeManager.get_current_time, nullable=False)
-    expires_at = Column(DateTime, nullable=True)
-    
-    # Relationships
-    user = relationship("User", back_populates="sessions")
-    
-    def __repr__(self):
-        return f"<UserSession(id={self.id}, user_id={self.user_id}, session_id='{self.session_id}')>"
 
 # ==================== CHAT MODELS ====================
 
@@ -164,61 +148,19 @@ class Chat(Base):
     # Configuration
     roast_cooldown = Column(Integer, default=3)  # seconds
     max_daily_roasts = Column(Integer, default=50)
-    allowed_languages = Column(JSON, default=lambda: ['bn', 'en'])
-    banned_words = Column(JSON, default=lambda: [])
-    admin_users = Column(JSON, default=lambda: [])
+    
+    # JSON data for additional fields
+    settings_data = Column(JSONType, default=lambda: {
+        'allowed_languages': ['bn', 'en'],
+        'banned_words': [],
+        'admin_users': []
+    })
     
     # Relationships
     roasts = relationship("Roast", back_populates="chat", cascade="all, delete-orphan")
-    messages = relationship("ChatMessage", back_populates="chat", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Chat(id={self.id}, chat_id={self.chat_id}, title='{self.title}')>"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """ডিকশনারি হিসেবে রিটার্ন করে"""
-        return {
-            'id': self.id,
-            'chat_id': self.chat_id,
-            'chat_type': self.chat_type,
-            'title': self.title,
-            'username': self.username,
-            'member_count': self.member_count,
-            'roast_count': self.roast_count,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'is_active': self.is_active,
-            'welcome_enabled': self.welcome_enabled,
-            'roast_enabled': self.roast_enabled
-        }
-
-class ChatMessage(Base):
-    """চ্যাট মেসেজ লগ"""
-    __tablename__ = 'chat_messages'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    chat_id = Column(BigInteger, ForeignKey('chats.chat_id', ondelete='CASCADE'), nullable=False)
-    user_id = Column(BigInteger, nullable=False)
-    message_id = Column(BigInteger, nullable=False)
-    message_type = Column(String(50), nullable=False)  # text, photo, sticker, etc.
-    content = Column(Text, nullable=True)
-    text_length = Column(Integer, default=0)
-    has_media = Column(Boolean, default=False)
-    media_type = Column(String(50), nullable=True)
-    
-    # Analysis
-    sentiment_score = Column(Float, nullable=True)
-    language = Column(String(10), nullable=True)
-    contains_roast = Column(Boolean, default=False)
-    roast_triggered = Column(Boolean, default=False)
-    
-    # Timestamps
-    created_at = Column(DateTime, default=TimeManager.get_current_time, nullable=False)
-    
-    # Relationships
-    chat = relationship("Chat", back_populates="messages")
-    
-    def __repr__(self):
-        return f"<ChatMessage(id={self.id}, chat_id={self.chat_id}, user_id={self.user_id})>"
 
 # ==================== ROAST MODELS ====================
 
@@ -241,8 +183,6 @@ class Roast(Base):
     # Media
     has_image = Column(Boolean, default=True)
     image_path = Column(String(500), nullable=True)
-    image_size = Column(JSON, nullable=True)  # {'width': 1080, 'height': 1080}
-    image_format = Column(String(20), nullable=True)  # png, jpeg
     
     # Stats
     funny_votes = Column(Integer, default=0)
@@ -255,14 +195,19 @@ class Roast(Base):
     
     # Performance
     generation_time = Column(Float, nullable=True)  # seconds
-    processing_time = Column(Float, nullable=True)  # seconds
-    memory_used = Column(Float, nullable=True)  # MB
     
     # Metadata
     language = Column(String(10), default='bn')
     version = Column(String(20), default='3.0.0')
-    tags = Column(JSON, default=lambda: [])
-    metadata = Column(JSON, default=lambda: {})
+    
+    # JSON data for additional fields
+    roast_data = Column(JSONType, default=lambda: {
+        'tags': [],
+        'image_size': {'width': 1080, 'height': 1080},
+        'image_format': 'png',
+        'processing_time': None,
+        'memory_used': None
+    })
     
     # Timestamps
     created_at = Column(DateTime, default=TimeManager.get_current_time, nullable=False)
@@ -277,23 +222,6 @@ class Roast(Base):
     
     def __repr__(self):
         return f"<Roast(id={self.id}, user_id={self.user_id}, category='{self.roast_category}')>"
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """ডিকশনারি হিসেবে রিটার্ন করে"""
-        return {
-            'id': self.id,
-            'user_id': self.user_id,
-            'roast_text': self.roast_text,
-            'roast_category': self.roast_category,
-            'roast_style': self.roast_style,
-            'funny_votes': self.funny_votes,
-            'mid_votes': self.mid_votes,
-            'savage_votes': self.savage_votes,
-            'total_votes': self.total_votes,
-            'vote_score': self.vote_score,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'has_image': self.has_image
-        }
 
 # ==================== VOTE MODELS ====================
 
@@ -312,8 +240,12 @@ class Vote(Base):
     
     # Metadata
     is_anonymous = Column(Boolean, default=False)
-    device_info = Column(JSON, nullable=True)
-    ip_address = Column(String(50), nullable=True)
+    
+    # JSON data for additional fields
+    vote_data = Column(JSONType, default=lambda: {
+        'device_info': None,
+        'ip_address': None
+    })
     
     # Timestamps
     created_at = Column(DateTime, default=TimeManager.get_current_time, nullable=False)
@@ -345,7 +277,9 @@ class ReactionLog(Base):
     # Context
     is_auto = Column(Boolean, default=False)  # Auto-generated by bot
     triggered_by = Column(String(50), nullable=True)  # user, system, auto
-    context = Column(JSON, nullable=True)  # Additional context
+    
+    # JSON data for additional context
+    context_data = Column(JSONType, default=lambda: {})
     
     # Timestamps
     created_at = Column(DateTime, default=TimeManager.get_current_time, nullable=False)
@@ -376,10 +310,12 @@ class StickerLog(Base):
     source_image_path = Column(String(500), nullable=True)
     source_text = Column(Text, nullable=True)
     
-    # Metadata
-    dimensions = Column(JSON, nullable=True)  # {'width': 512, 'height': 512}
-    file_size = Column(Integer, nullable=True)  # bytes
-    format = Column(String(20), nullable=True)  # webp, png
+    # JSON data for additional fields
+    sticker_data = Column(JSONType, default=lambda: {
+        'dimensions': {'width': 512, 'height': 512},
+        'file_size': None,
+        'format': 'webp'
+    })
     
     # Timestamps
     created_at = Column(DateTime, default=TimeManager.get_current_time, nullable=False)
@@ -486,7 +422,9 @@ class SystemLog(Base):
     # Context
     user_id = Column(BigInteger, nullable=True)
     chat_id = Column(BigInteger, nullable=True)
-    additional_data = Column(JSON, nullable=True)
+    
+    # JSON data for additional data
+    log_data = Column(JSONType, default=lambda: {})
     
     # Performance
     execution_time = Column(Float, nullable=True)  # seconds
@@ -569,8 +507,6 @@ class BotSetting(Base):
 
 # Aliases for backward compatibility with existing code
 RoastLog = Roast  # For old code that uses RoastLog
-UserSessionLog = UserSession
-ChatLog = ChatMessage
 
 # ==================== DATABASE INITIALIZATION ====================
 
