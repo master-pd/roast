@@ -1042,6 +1042,8 @@ class RoastifyBot:
         except Exception as e:
             logger.error(f"Stop error: {e}")
 
+def get_image_generator():
+    return image_generator
 # ==================== MAIN FUNCTION ====================
 
 async def main():
