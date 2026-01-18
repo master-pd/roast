@@ -904,7 +904,8 @@ if 'Helpers' not in globals():
     Helpers = SimpleHelpers
 
 # Create the main image generator
-image_generator = AdvancedImageGenerator()
+ImageGenerator = AdvancedImageGenerator
+#image_generator = AdvancedImageGenerator()
 
 def get_image_generator():
     """Get the image generator instance"""
