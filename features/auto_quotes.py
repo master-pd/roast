@@ -1089,3 +1089,5 @@ def setup(bot):
     """Setup function for bot integration"""
     auto_quotes = AutoQuotes(bot)
     return auto_quotes
+# AutoQuoteSystem কে AutoQuotes এর alias হিসেবে রাখুন
+AutoQuoteSystem = AutoQuotes
