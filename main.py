@@ -214,12 +214,13 @@ class BotRunner:
             # Create and start bot
             self.bot = RoastifyBot()
             
-            # Run the bot
+            # Run the bot using async
             logger.info("=" * 50)
             logger.info("Starting Roastify Bot")
             logger.info("=" * 50)
             
-            self.bot.run()
+            # FIXED: Use async run instead of self.bot.run()
+            self._run_bot_async()
             
         except KeyboardInterrupt:
             logger.info("Shutdown requested by user (Ctrl+C)")
@@ -234,20 +235,92 @@ class BotRunner:
             print("4. Run: python setup_assets.py")
             self.shutdown()
     
+    def _run_bot_async(self):
+        """Run bot asynchronously"""
+        try:
+            import asyncio
+            
+            # Get event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Run bot
+            if hasattr(self.bot, 'start_bot'):
+                # If bot has start_bot method
+                bot_task = loop.create_task(self.bot.start_bot())
+                
+                # Run until complete or interrupted
+                try:
+                    loop.run_until_complete(bot_task)
+                except KeyboardInterrupt:
+                    print("\n🛑 Keyboard interrupt received")
+                    # Schedule shutdown
+                    if hasattr(self.bot, 'stop_bot'):
+                        loop.run_until_complete(self.bot.stop_bot())
+            elif hasattr(self.bot, 'run'):
+                # If bot has run method (for compatibility)
+                self.bot.run()
+            else:
+                # Direct async call
+                asyncio.run(self._run_bot_directly())
+                
+        except Exception as e:
+            logger.error(f"Error running bot: {e}")
+            raise
+    
+    async def _run_bot_directly(self):
+        """Direct bot runner for async execution"""
+        try:
+            if hasattr(self.bot, 'application'):
+                # Start the bot application
+                await self.bot.application.initialize()
+                await self.bot.application.start()
+                await self.bot.application.updater.start_polling()
+                
+                # Keep running
+                print("✅ Bot is now running! Press Ctrl+C to stop.")
+                await asyncio.Event().wait()
+                
+        except asyncio.CancelledError:
+            print("\n🛑 Bot stopped")
+        except Exception as e:
+            logger.error(f"Bot error: {e}")
+            raise
+    
     def shutdown(self):
         """বট বন্ধ করে"""
         print("\n\n🛑 Shutting down bot...")
         
-        if self.bot and self.bot.application:
+        # Try to stop the bot
+        if self.bot:
             try:
-                # Try to stop the application
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # Schedule shutdown
-                    asyncio.create_task(self.bot.application.shutdown())
-                    asyncio.create_task(self.bot.application.stop())
-            except:
-                pass
+                # Check if bot has stop_bot method
+                if hasattr(self.bot, 'stop_bot'):
+                    import asyncio
+                    
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # Schedule shutdown
+                            asyncio.create_task(self.bot.stop_bot())
+                    except:
+                        # If no loop, run directly
+                        asyncio.run(self.bot.stop_bot())
+                
+                # Also try to stop application directly
+                if hasattr(self.bot, 'application') and self.bot.application:
+                    import asyncio
+                    try:
+                        asyncio.run(self.bot.application.stop())
+                        asyncio.run(self.bot.application.shutdown())
+                    except:
+                        pass
+                        
+            except Exception as e:
+                logger.error(f"Error during shutdown: {e}")
         
         logger.info("Bot shutdown complete")
         
