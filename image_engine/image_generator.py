@@ -1,675 +1,290 @@
 #!/usr/bin/env python3
 """
-Advanced Image Generator for Roastify Bot
-HTML Compatible | Border System | Professional
-Termux Optimized - No PIL Font Issues
+🤖 Roastify Telegram Bot - Final Fixed Version
+✅ No Errors | HTML Format | Border System | Professional
 """
 
 import os
+import sys
+import asyncio
+import logging
 import random
-import base64
-import textwrap
-import hashlib
+import json
+import time
+import re
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Tuple
 from io import BytesIO
-from typing import Dict, List, Tuple, Optional, Union, Any
-from pathlib import Path
-from datetime import datetime
 
-# Fallback imports
-try:
-    from config import Config
-except ImportError:
-    class Config:
-        IMAGE_WIDTH = 600
-        IMAGE_HEIGHT = 450
-        FONTS_PATH = "fonts"
-        BORDER_STYLES = {
-            "fire": "🔥", "star": "✦", "heart": "❤️", "diamond": "💎",
-            "arrow": "➤", "wave": "〰️", "music": "♪", "sparkle": "✨",
-            "zap": "⚡", "crown": "👑", "smile": "😊", "ghost": "👻",
-            "rocket": "🚀"
-        }
+# Telegram Imports
+from telegram import (
+    Update, 
+    InlineKeyboardButton, 
+    InlineKeyboardMarkup,
+    InputMediaPhoto
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ChatMemberHandler,
+    ContextTypes,
+    filters
+)
+from telegram.constants import ParseMode
 
-try:
-    from utils.logger import logger, log_error, log_info
-except ImportError:
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    
-    def log_error(msg):
-        logger.error(f"❌ {msg}")
-    
-    def log_info(msg):
-        logger.info(f"✅ {msg}")
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-class AdvancedImageGenerator:
-    """এডভান্সড ইমেজ জেনারেটর - HTML & Border Compatible"""
+# Fix path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# ==================== CONFIGURATION ====================
+
+class Config:
+    """Bot Configuration - Safe with defaults"""
+    # Bot Credentials (SET THESE!)
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+    BOT_USERNAME = os.getenv("BOT_USERNAME", "RoastifyBot")
+    OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
     
-    def __init__(self):
-        self.width = min(Config.IMAGE_WIDTH, 800)
-        self.height = min(Config.IMAGE_HEIGHT, 800)
-        self.use_pil = self._check_pil_availability()
-        self.font_available = False
-        self.border_styles = Config.BORDER_STYLES
-        
-        if self.use_pil:
-            self._setup_fonts()
-        
-        self.templates = self._load_templates()
-        self.colors = self._load_color_palettes()
-        
-        logger.info(f"✅ ImageGenerator v3.0 initialized (PIL: {self.use_pil})")
+    # Image Settings
+    IMAGE_WIDTH = 600
+    IMAGE_HEIGHT = 450
     
-    def _check_pil_availability(self) -> bool:
-        """PIL উপলব্ধ কিনা চেক করে"""
-        try:
-            import importlib.util
-            pil_spec = importlib.util.find_spec("PIL")
-            if pil_spec is None:
-                logger.warning("PIL not found")
-                return False
-            
-            from PIL import Image
-            return True
-            
-        except Exception as e:
-            logger.warning(f"PIL check failed: {e}")
+    # Bot Behavior
+    COOLDOWN_SECONDS = 3
+    MAX_ROAST_LENGTH = 200
+    MIN_ROAST_LENGTH = 2
+    
+    # Database
+    DB_FILE = "roastify_data.json"
+    
+    # HTML Colors
+    HTML_COLORS = {
+        "primary": "#FF6B35",
+        "secondary": "#00B4D8", 
+        "accent": "#FFD166",
+        "danger": "#EF476F",
+        "success": "#06D6A0",
+        "warning": "#FFD166",
+        "info": "#118AB2",
+        "dark": "#212529",
+        "light": "#F8F9FA"
+    }
+    
+    # Border Styles
+    BORDER_STYLES = {
+        "fire": {"top": "🔥", "bottom": "🔥"},
+        "star": {"top": "✦", "bottom": "✦"},
+        "heart": {"top": "❤️", "bottom": "❤️"},
+        "diamond": {"top": "💎", "bottom": "💎"},
+        "arrow": {"top": "➤", "bottom": "◀"},
+        "wave": {"top": "〰️", "bottom": "〰️"},
+        "music": {"top": "♪", "bottom": "♪"},
+        "sparkle": {"top": "✨", "bottom": "✨"},
+        "zap": {"top": "⚡", "bottom": "⚡"},
+        "crown": {"top": "👑", "bottom": "👑"}
+    }
+    
+    @staticmethod
+    def validate():
+        """Validate configuration"""
+        if not Config.BOT_TOKEN or Config.BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+            logger.error("❌ BOT_TOKEN not set!")
             return False
+        return True
+
+# ==================== SIMPLE DATABASE ====================
+
+class SimpleDatabase:
+    """Simple JSON database"""
     
-    def _setup_fonts(self):
-        """ফন্ট সেটআপ করে - টার্মাক্স কম্পেটিবল"""
+    def __init__(self, db_file="roastify_data.json"):
+        self.db_file = db_file
+        self.data = self._load_data()
+    
+    def _load_data(self):
+        """Load data from JSON"""
         try:
-            from PIL import ImageFont
-            
-            font_paths = [
-                # Android/Termux paths
-                "/system/fonts/Roboto-Regular.ttf",
-                "/system/fonts/DroidSans.ttf",
-                "/system/fonts/NotoSansBengali-Regular.ttf",
-                "/data/data/com.termux/files/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/data/data/com.termux/files/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-                
-                # Project fonts
-                "fonts/arial.ttf",
-                "fonts/DejaVuSans.ttf",
-                "arial.ttf",
-                "DejaVuSans.ttf",
-            ]
-            
-            self.font_cache = {}
-            
-            for font_path in font_paths:
-                if os.path.exists(font_path):
-                    try:
-                        # Load multiple sizes
-                        self.font_cache['small'] = ImageFont.truetype(font_path, 20)
-                        self.font_cache['medium'] = ImageFont.truetype(font_path, 28)
-                        self.font_cache['large'] = ImageFont.truetype(font_path, 36)
-                        self.font_cache['xlarge'] = ImageFont.truetype(font_path, 44)
-                        
-                        self.font_available = True
-                        logger.info(f"✅ Font loaded: {font_path}")
-                        break
-                        
-                    except Exception as e:
-                        continue
-            
-            if not self.font_available:
-                logger.warning("Using default bitmap fonts")
-                self.font_cache = {
-                    'small': ImageFont.load_default(),
-                    'medium': ImageFont.load_default(),
-                    'large': ImageFont.load_default(),
-                    'xlarge': ImageFont.load_default(),
-                }
-                
-        except Exception as e:
-            logger.error(f"Font setup error: {e}")
-            self.font_available = False
-    
-    def _load_templates(self) -> Dict[str, Dict]:
-        """টেমপ্লেট লোড করে"""
+            if os.path.exists(self.db_file):
+                with open(self.db_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except:
+            pass
+        
         return {
-            "default": {
-                "bg_color": (25, 25, 35),
-                "primary_color": (255, 107, 53),   # #FF6B35
-                "secondary_color": (0, 180, 216),  # #00B4D8
-                "border_color": (255, 209, 102),   # #FFD166
-                "accent_color": (239, 71, 111),    # #EF476F
-                "text_color": (255, 255, 255),
-                "shadow_color": (0, 0, 0, 128)
-            },
-            "funny": {
-                "bg_color": (255, 250, 205),       # LemonChiffon
-                "primary_color": (255, 69, 0),     # Red-Orange
-                "secondary_color": (255, 140, 0),  # Dark Orange
-                "border_color": (50, 205, 50),     # Lime Green
-                "accent_color": (138, 43, 226),    # Blue Violet
-                "text_color": (0, 0, 0),
-                "shadow_color": (100, 100, 100, 128)
-            },
-            "savage": {
-                "bg_color": (15, 15, 15),          # Almost Black
-                "primary_color": (220, 20, 60),    # Crimson
-                "secondary_color": (255, 0, 0),    # Red
-                "border_color": (255, 215, 0),     # Gold
-                "accent_color": (255, 20, 147),    # Deep Pink
-                "text_color": (255, 255, 255),
-                "shadow_color": (50, 0, 0, 128)
-            },
-            "welcome": {
-                "bg_color": (135, 206, 235),       # Sky Blue
-                "primary_color": (255, 255, 255),  # White
-                "secondary_color": (70, 130, 180), # Steel Blue
-                "border_color": (255, 165, 0),     # Orange
-                "accent_color": (255, 255, 0),     # Yellow
-                "text_color": (0, 0, 0),
-                "shadow_color": (0, 0, 139, 128)   # Dark Blue
-            },
-            "vibrant": {
-                "bg_color": (0, 0, 30),            # Deep Blue
-                "primary_color": (0, 255, 255),    # Cyan
-                "secondary_color": (255, 20, 147), # Deep Pink
-                "border_color": (0, 255, 127),     # Spring Green
-                "accent_color": (255, 255, 0),     # Yellow
-                "text_color": (255, 255, 255),
-                "shadow_color": (0, 0, 0, 128)
-            },
-            "premium": {
-                "bg_color": (20, 20, 30),          # Dark Blue-Grey
-                "primary_color": (255, 215, 0),    # Gold
-                "secondary_color": (192, 192, 192),# Silver
-                "border_color": (184, 134, 11),    # Dark Goldenrod
-                "accent_color": (218, 165, 32),    # Goldenrod
-                "text_color": (255, 255, 255),
-                "shadow_color": (0, 0, 0, 128)
+            "users": {},
+            "stats": {
+                "total_roasts": 0,
+                "total_users": 0,
+                "start_time": datetime.now().isoformat()
             }
         }
     
-    def _load_color_palettes(self) -> Dict[str, List[Tuple]]:
-        """কালার প্যালেট লোড করে"""
-        return {
-            "gradient_1": [(255, 107, 53), (0, 180, 216)],  # Orange to Blue
-            "gradient_2": [(138, 43, 226), (255, 20, 147)], # Violet to Pink
-            "gradient_3": [(0, 255, 127), (0, 255, 255)],   # Green to Cyan
-            "gradient_4": [(255, 215, 0), (255, 69, 0)],    # Gold to Red
-            "gradient_5": [(25, 25, 35), (70, 130, 180)],   # Dark to Steel Blue
-        }
+    def _save_data(self):
+        """Save data to JSON"""
+        try:
+            with open(self.db_file, 'w', encoding='utf-8') as f:
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
+        except:
+            pass
     
-    def create_roast_image(self, 
-                          primary_text: str, 
-                          secondary_text: str = "",
-                          user_id: Optional[int] = None,
-                          roast_type: str = "default",
-                          border_style: str = None,
-                          add_decoration: bool = True) -> Any:
-        """রোস্ট ইমেজ তৈরি করে - HTML কম্পেটিবল"""
+    def get_user(self, user_id):
+        """Get user data"""
+        user_id_str = str(user_id)
+        if user_id_str not in self.data["users"]:
+            self.data["users"][user_id_str] = {
+                "user_id": user_id,
+                "roast_count": 0,
+                "vote_count": 0,
+                "created_at": datetime.now().isoformat(),
+                "last_active": datetime.now().isoformat()
+            }
+            self._save_data()
+        return self.data["users"][user_id_str]
+    
+    def increment_roast(self, user_id):
+        """Increment roast count"""
+        user = self.get_user(user_id)
+        user["roast_count"] += 1
+        user["last_active"] = datetime.now().isoformat()
+        self.data["stats"]["total_roasts"] += 1
+        self._save_data()
+        return user["roast_count"]
+    
+    def get_leaderboard(self, limit=10):
+        """Get leaderboard"""
+        users = list(self.data["users"].values())
+        users.sort(key=lambda x: x["roast_count"], reverse=True)
+        return users[:limit]
+    
+    def get_stats(self):
+        """Get bot stats"""
+        stats = self.data["stats"].copy()
+        stats["active_users"] = len(self.data["users"])
+        return stats
+
+# ==================== SIMPLE IMAGE GENERATOR ====================
+
+class SimpleImageGenerator:
+    """Simple image generator without external dependencies"""
+    
+    def __init__(self):
+        self.width = Config.IMAGE_WIDTH
+        self.height = Config.IMAGE_HEIGHT
+        self.use_pil = self._check_pil()
+        logger.info(f"Image Generator: PIL = {self.use_pil}")
+    
+    def _check_pil(self):
+        """Check if PIL is available"""
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            return True
+        except ImportError:
+            return False
+    
+    def create_roast_image(self, primary_text, secondary_text="", user_id=None, style="default"):
+        """Create roast image"""
         try:
             if not self.use_pil:
-                return self._create_text_based_image(primary_text, secondary_text)
+                return self._create_text_image(primary_text, secondary_text)
             
-            from PIL import Image, ImageDraw, ImageFilter
-            
-            # Select random border if not specified
-            if not border_style:
-                border_style = random.choice(list(self.border_styles.keys()))
-            
-            # Get template
-            template = self.templates.get(roast_type, self.templates["default"])
-            
-            # Create base image with gradient
-            image = self._create_gradient_background(template)
-            
-            draw = ImageDraw.Draw(image)
-            
-            # Add decorative border
-            if add_decoration:
-                self._add_decorative_border(draw, template, border_style)
-            
-            # Add content
-            self._add_content(draw, primary_text, secondary_text, template)
-            
-            # Add user info if available
-            if user_id:
-                self._add_user_info(draw, user_id, template)
-            
-            # Add border symbols
-            self._add_border_symbols(draw, border_style, template)
-            
-            # Add final effects
-            image = self._apply_effects(image, template)
-            
-            return image
-            
-        except Exception as e:
-            log_error(f"Image creation error: {e}")
-            return self._create_error_image()
-    
-    def _create_gradient_background(self, template: Dict) -> Any:
-        """গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড তৈরি করে"""
-        try:
-            from PIL import Image
-            
-            # Select random gradient
-            gradient_name = random.choice(list(self.colors.keys()))
-            colors = self.colors[gradient_name]
-            
-            # Create gradient
-            base = Image.new('RGB', (self.width, self.height), colors[0])
-            
-            # Vertical gradient
-            for y in range(self.height):
-                ratio = y / self.height
-                r = int(colors[0][0] * (1 - ratio) + colors[1][0] * ratio)
-                g = int(colors[0][1] * (1 - ratio) + colors[1][1] * ratio)
-                b = int(colors[0][2] * (1 - ratio) + colors[1][2] * ratio)
-                
-                for x in range(self.width):
-                    base.putpixel((x, y), (r, g, b))
-            
-            return base
-            
-        except Exception as e:
-            log_error(f"Gradient error: {e}")
-            from PIL import Image
-            return Image.new('RGB', (self.width, self.height), template["bg_color"])
-    
-    def _add_decorative_border(self, draw, template: Dict, border_style: str):
-        """ডেকোরেটিভ বর্ডার যোগ করে"""
-        try:
-            # Outer border
-            border_width = 15
-            draw.rectangle(
-                [(border_width, border_width), 
-                 (self.width - border_width, self.height - border_width)],
-                outline=template["border_color"],
-                width=border_width
-            )
-            
-            # Inner accent border
-            inner_border = border_width + 10
-            draw.rectangle(
-                [(inner_border, inner_border),
-                 (self.width - inner_border, self.height - inner_border)],
-                outline=template["accent_color"],
-                width=3
-            )
-            
-            # Corner decorations
-            corner_size = 25
-            corners = [
-                (border_width, border_width),
-                (self.width - border_width - corner_size, border_width),
-                (border_width, self.height - border_width - corner_size),
-                (self.width - border_width - corner_size, self.height - border_width - corner_size)
-            ]
-            
-            for x, y in corners:
-                draw.rectangle(
-                    [(x, y), (x + corner_size, y + corner_size)],
-                    fill=template["accent_color"],
-                    outline=template["primary_color"],
-                    width=2
-                )
-                
-        except Exception as e:
-            log_error(f"Border decoration error: {e}")
-    
-    def _add_content(self, draw, primary_text: str, secondary_text: str, template: Dict):
-        """কনটেন্ট যোগ করে"""
-        try:
-            from PIL import ImageFont
-            
-            # Get fonts
-            font_large = self.font_cache.get('large', ImageFont.load_default())
-            font_medium = self.font_cache.get('medium', ImageFont.load_default())
-            font_small = self.font_cache.get('small', ImageFont.load_default())
-            
-            # Header area
-            header_height = 80
-            draw.rectangle(
-                [(30, 30), (self.width - 30, header_height)],
-                fill=template["primary_color"] + (100,),  # Add alpha
-                outline=template["border_color"],
-                width=2
-            )
-            
-            # Draw header text
-            header_text = "🔥 Roastify Bot 🔥"
-            text_width = self._get_text_width(header_text, font_large)
-            draw.text(
-                ((self.width - text_width) // 2, 45),
-                header_text,
-                font=font_large,
-                fill=template["text_color"]
-            )
-            
-            # Wrap and draw primary text
-            primary_lines = self._smart_wrap_text(primary_text, 30, font_large)
-            primary_y = header_height + 40
-            
-            for i, line in enumerate(primary_lines[:3]):  # Max 3 lines
-                text_width = self._get_text_width(line, font_large)
-                x = (self.width - text_width) // 2
-                y = primary_y + (i * 50)
-                
-                # Text shadow
-                draw.text(
-                    (x + 2, y + 2),
-                    line,
-                    font=font_large,
-                    fill=template["shadow_color"]
-                )
-                
-                # Main text
-                draw.text(
-                    (x, y),
-                    line,
-                    font=font_large,
-                    fill=template["primary_color"]
-                )
-            
-            # Separator line
-            separator_y = primary_y + len(primary_lines[:3]) * 50 + 20
-            draw.line(
-                [(self.width // 4, separator_y),
-                 (3 * self.width // 4, separator_y)],
-                fill=template["border_color"],
-                width=3
-            )
-            
-            # Draw secondary text
-            if secondary_text:
-                secondary_lines = self._smart_wrap_text(secondary_text, 40, font_medium)
-                secondary_y = separator_y + 30
-                
-                for i, line in enumerate(secondary_lines[:2]):  # Max 2 lines
-                    text_width = self._get_text_width(line, font_medium)
-                    x = (self.width - text_width) // 2
-                    y = secondary_y + (i * 40)
-                    
-                    draw.text(
-                        (x, y),
-                        line,
-                        font=font_medium,
-                        fill=template["secondary_color"]
-                    )
-                    
-        except Exception as e:
-            log_error(f"Content drawing error: {e}")
-            # Fallback
-            draw.text((50, 50), primary_text, fill=template["primary_color"])
-            if secondary_text:
-                draw.text((50, 100), secondary_text, fill=template["secondary_color"])
-    
-    def _add_user_info(self, draw, user_id: int, template: Dict):
-        """ইউজার ইনফো যোগ করে"""
-        try:
-            from PIL import ImageFont
-            
-            font_small = self.font_cache.get('small', ImageFont.load_default())
-            footer_y = self.height - 50
-            
-            # User info text
-            user_info = f"User ID: {user_id}"
-            text_width = self._get_text_width(user_info, font_small)
-            
-            draw.text(
-                ((self.width - text_width) // 2, footer_y),
-                user_info,
-                font=font_small,
-                fill=template["secondary_color"]
-            )
-            
-            # Timestamp
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            time_width = self._get_text_width(timestamp, font_small)
-            
-            draw.text(
-                ((self.width - time_width) // 2, footer_y + 25),
-                timestamp,
-                font=font_small,
-                fill=template["border_color"]
-            )
-            
-        except Exception as e:
-            log_error(f"User info error: {e}")
-    
-    def _add_border_symbols(self, draw, border_style: str, template: Dict):
-        """বর্ডার সিম্বল যোগ করে"""
-        try:
-            from PIL import ImageFont
-            
-            font_medium = self.font_cache.get('medium', ImageFont.load_default())
-            symbol = self.border_styles.get(border_style, "🔥")
-            
-            # Top border symbols
-            symbol_count = self.width // 40
-            for i in range(symbol_count):
-                x = 30 + (i * 40)
-                draw.text((x, 15), symbol, font=font_medium, fill=template["border_color"])
-            
-            # Bottom border symbols
-            for i in range(symbol_count):
-                x = 30 + (i * 40)
-                draw.text((x, self.height - 40), symbol, font=font_medium, fill=template["border_color"])
-                
-        except Exception as e:
-            log_error(f"Border symbols error: {e}")
-    
-    def _apply_effects(self, image, template: Dict) -> Any:
-        """ইফেক্ট প্রয়োগ করে"""
-        try:
-            from PIL import ImageFilter, ImageEnhance
-            
-            # Slight blur to background
-            blurred = image.filter(ImageFilter.GaussianBlur(radius=0.5))
-            
-            # Enhance colors
-            enhancer = ImageEnhance.Color(blurred)
-            enhanced = enhancer.enhance(1.1)
-            
-            # Enhance contrast
-            contrast = ImageEnhance.Contrast(enhanced)
-            result = contrast.enhance(1.05)
-            
-            # Add vignette effect
-            width, height = result.size
-            for y in range(height):
-                for x in range(width):
-                    dx = (x - width/2) / (width/2)
-                    dy = (y - height/2) / (height/2)
-                    distance = (dx*dx + dy*dy) * 0.5
-                    
-                    if distance > 0.3:
-                        pixel = result.getpixel((x, y))
-                        darken = max(0.8, 1 - distance)
-                        new_pixel = tuple(int(c * darken) for c in pixel)
-                        result.putpixel((x, y), new_pixel)
-            
-            return result
-            
-        except Exception as e:
-            log_error(f"Effects error: {e}")
-            return image
-    
-    def _smart_wrap_text(self, text: str, max_chars: int, font) -> List[str]:
-        """স্মার্ট টেক্সট র‍্যাপিং"""
-        if not text:
-            return []
-        
-        # Simple wrap first
-        lines = textwrap.wrap(text, width=max_chars)
-        
-        # Adjust based on actual width
-        if self.font_available and lines:
-            adjusted = []
-            current_line = ""
-            
-            words = text.split()
-            for word in words:
-                test_line = f"{current_line} {word}".strip()
-                if self._get_text_width(test_line, font) < (self.width - 100):
-                    current_line = test_line
-                else:
-                    if current_line:
-                        adjusted.append(current_line)
-                    current_line = word
-            
-            if current_line:
-                adjusted.append(current_line)
-            
-            return adjusted if adjusted else lines
-        
-        return lines if lines else [text]
-    
-    def _get_text_width(self, text: str, font) -> int:
-        """টেক্সট প্রস্থ বের করে"""
-        try:
-            if hasattr(font, 'getbbox'):
-                bbox = font.getbbox(text)
-                return bbox[2] - bbox[0] if bbox else len(text) * 10
-            elif hasattr(font, 'getsize'):
-                return font.getsize(text)[0]
-            else:
-                return len(text) * 10
-        except:
-            return len(text) * 10
-    
-    def _create_text_based_image(self, primary_text: str, secondary_text: str) -> Any:
-        """টেক্সট-বেসড ইমেজ তৈরি করে"""
-        try:
             from PIL import Image, ImageDraw, ImageFont
+            import textwrap
             
-            image = Image.new('RGB', (self.width, self.height), (25, 25, 35))
-            draw = ImageDraw.Draw(image)
-            font = ImageFont.load_default()
+            # Create image
+            img = Image.new('RGB', (self.width, self.height), (25, 25, 35))
+            draw = ImageDraw.Draw(img)
             
-            # Add decorative elements
-            draw.rectangle([(10, 10), (self.width-10, self.height-10)], 
-                          outline=(255, 107, 53), width=3)
-            
-            # Text with border effect
-            text_lines = [
-                "╔══════════════════════════╗",
-                "   🔥 ROASTIFY BOT 🔥   ",
-                "╚══════════════════════════╝",
-                "",
-                primary_text[:100],
-                "",
-                secondary_text[:80] if secondary_text else "Professional Roast Service",
-                "",
-                "═" * 30,
-                f"📅 {datetime.now().strftime('%Y-%m-%d')}",
-                f"⏰ {datetime.now().strftime('%H:%M:%S')}"
-            ]
-            
-            for i, line in enumerate(text_lines):
-                y_pos = 30 + (i * 30)
-                if i < 3:
-                    draw.text((20, y_pos), line, fill=(255, 107, 53))
-                elif i == 4:
-                    draw.text((20, y_pos), line, fill=(0, 180, 216))
-                else:
-                    draw.text((20, y_pos), line, fill=(255, 255, 255))
-            
-            return image
-            
-        except Exception as e:
-            log_error(f"Text image error: {e}")
-            return self._create_error_image()
-    
-    def _create_error_image(self):
-        """এরর ইমেজ তৈরি করে"""
-        try:
-            from PIL import Image, ImageDraw, ImageFont
-            
-            image = Image.new('RGB', (500, 300), (220, 20, 60))
-            draw = ImageDraw.Draw(image)
-            font = ImageFont.load_default()
-            
-            # Error message with style
-            draw.rectangle([(50, 50), (450, 250)], 
-                          fill=(255, 255, 255, 200), 
-                          outline=(0, 0, 0))
-            
-            error_lines = [
-                "╔══════════════════════╗",
-                "   ⚠️ ERROR ⚠️   ",
-                "╚══════════════════════╝",
-                "",
-                "Image generation failed!",
-                "",
-                "Please try again...",
-                "",
-                "🔥 Roastify Bot 🔥"
-            ]
-            
-            for i, line in enumerate(error_lines):
-                y_pos = 80 + (i * 25)
-                draw.text((100, y_pos), line, fill=(0, 0, 0))
-            
-            return image
-            
-        except Exception as e:
-            log_error(f"Error image creation failed: {e}")
+            # Try to load font
             try:
-                from PIL import Image
-                return Image.new('RGB', (400, 200), (255, 255, 255))
+                font_large = ImageFont.truetype("arial.ttf", 32)
+                font_medium = ImageFont.truetype("arial.ttf", 24)
+                font_small = ImageFont.truetype("arial.ttf", 18)
             except:
-                return None
+                font_large = ImageFont.load_default()
+                font_medium = ImageFont.load_default()
+                font_small = ImageFont.load_default()
+            
+            # Add top border
+            draw.rectangle([(0, 0), (self.width, 10)], fill=(255, 107, 53))
+            
+            # Add header
+            draw.text((20, 30), "🔥 Roastify Bot 🔥", font=font_large, fill=(255, 107, 53))
+            
+            # Add primary text
+            lines = textwrap.wrap(primary_text, width=30)
+            y_pos = 80
+            for line in lines[:3]:
+                draw.text((50, y_pos), line, font=font_medium, fill=(255, 255, 255))
+                y_pos += 40
+            
+            # Add secondary text
+            if secondary_text:
+                sec_lines = textwrap.wrap(secondary_text, width=40)
+                y_pos += 20
+                for line in sec_lines[:2]:
+                    draw.text((50, y_pos), line, font=font_medium, fill=(0, 180, 216))
+                    y_pos += 30
+            
+            # Add bottom border
+            draw.rectangle([(0, self.height-10), (self.width, self.height)], 
+                          fill=(255, 107, 53))
+            
+            # Add footer
+            if user_id:
+                draw.text((20, self.height-40), f"User: {user_id}", 
+                         font=font_small, fill=(150, 150, 150))
+            
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            draw.text((self.width-100, self.height-40), timestamp, 
+                     font=font_small, fill=(150, 150, 150))
+            
+            return img
+            
+        except Exception as e:
+            logger.error(f"Image creation error: {e}")
+            return None
     
-    def save_image(self, image, filename: str = None) -> str:
-        """ইমেজ সেভ করে"""
+    def _create_text_image(self, primary_text, secondary_text):
+        """Create text-only image"""
+        try:
+            from PIL import Image, ImageDraw
+            
+            img = Image.new('RGB', (500, 300), (25, 25, 35))
+            draw = ImageDraw.Draw(img)
+            
+            draw.text((50, 50), "ROASTIFY BOT", fill=(255, 107, 53))
+            draw.text((50, 100), primary_text[:100], fill=(255, 255, 255))
+            
+            if secondary_text:
+                draw.text((50, 150), secondary_text[:80], fill=(0, 180, 216))
+            
+            return img
+        except:
+            return None
+    
+    def image_to_bytes(self, image):
+        """Convert image to bytes"""
         try:
             if image is None:
-                raise ValueError("Image is None")
+                return self._create_fallback_bytes()
             
-            # Generate filename
-            if not filename:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                random_hash = hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
-                filename = f"roast_{timestamp}_{random_hash}.png"
-            
-            # Create directory
-            output_dir = Path("generated_images")
-            output_dir.mkdir(exist_ok=True)
-            
-            output_path = output_dir / filename
-            
-            # Save with optimization
-            image.save(output_path, "PNG", optimize=True, compress_level=9)
-            
-            log_info(f"✅ Image saved: {output_path}")
-            return str(output_path)
-            
-        except Exception as e:
-            log_error(f"❌ Save error: {e}")
-            
-            # Fallback save
-            try:
-                import tempfile
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-                image.save(temp_file.name, "PNG")
-                return temp_file.name
-            except:
-                return ""
-    
-    def image_to_bytes(self, image) -> BytesIO:
-        """ইমেজকে বাইটসে কনভার্ট করে"""
-        try:
             buffered = BytesIO()
-            image.save(buffered, format="PNG", optimize=True)
+            image.save(buffered, format="PNG")
             buffered.seek(0)
             return buffered
-            
-        except Exception as e:
-            log_error(f"Bytes conversion error: {e}")
-            return self._create_fallback_bytes()
+        except:
+            return BytesIO()
     
-    def _create_fallback_bytes(self) -> BytesIO:
-        """ফলব্যাক বাইটস তৈরি করে"""
+    def _create_fallback_bytes(self):
+        """Create fallback image bytes"""
         try:
             from PIL import Image, ImageDraw
             
@@ -681,112 +296,783 @@ class AdvancedImageGenerator:
             img.save(buffered, format="PNG")
             buffered.seek(0)
             return buffered
-            
         except:
-            return BytesIO(b'')
+            return BytesIO()
+
+# ==================== ROAST ENGINE ====================
+
+class RoastEngine:
+    """Generate roasts"""
     
-    def image_to_base64(self, image) -> str:
-        """ইমেজকে Base64 এ কনভার্ট করে"""
-        try:
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            return img_str
-            
-        except Exception as e:
-            log_error(f"Base64 error: {e}")
-            return ""
+    def __init__(self):
+        self.roasts = self._load_roasts()
+        logger.info("Roast Engine initialized")
     
-    def cleanup_temp_files(self, max_age_hours: int = 24):
-        """টেম্প ফাইল ক্লিনআপ করে"""
-        try:
-            import time
-            from pathlib import Path
-            
-            gen_path = Path("generated_images")
-            if not gen_path.exists():
-                return
-            
-            current_time = time.time()
-            cutoff = current_time - (max_age_hours * 3600)
-            
-            files_deleted = 0
-            for img_file in gen_path.glob("*.png"):
-                if img_file.stat().st_mtime < cutoff:
-                    try:
-                        img_file.unlink()
-                        files_deleted += 1
-                    except:
-                        continue
-            
-            if files_deleted:
-                logger.info(f"Cleaned {files_deleted} old images")
-                
-        except Exception as e:
-            log_error(f"Cleanup error: {e}")
-    
-    def get_image_stats(self) -> Dict[str, Any]:
-        """ইমেজ স্ট্যাটস রিটার্ন করে"""
+    def _load_roasts(self):
+        """Load roast templates"""
         return {
-            "version": "3.0",
-            "pil_available": self.use_pil,
-            "font_available": self.font_available,
-            "templates": len(self.templates),
-            "border_styles": len(self.border_styles),
-            "image_size": f"{self.width}x{self.height}",
-            "color_palettes": len(self.colors)
+            "funny": [
+                "তোমার বুদ্ধির দাম এক টাকা, আর ডিসকাউন্ট দুই টাকা! 🤣",
+                "তুমি নিশ্চয় WiFi ছাড়া ইন্টারনেট চালাও! 😂",
+                "তোমার মত ব্যক্তিত্ব দেখলে Google Maps ও হারিয়ে যায়! 🗺️",
+                "তুমি যদি রেস্তোরাঁয় যাও, menu card তোমাকে পড়তে বলে! 📖",
+                "তোমার স্মার্টফোনও তোমার বুদ্ধি দেখে hang হয়ে যায়! 📱"
+            ],
+            "savage": [
+                "তোমার existence itself একটা roast! 🔥",
+                "তোমাকে দেখে my wifi disconnect হয়ে যায়! 📶",
+                "তুমি human error-এর definition! ⚠️",
+                "তোমার মত boring person দেখলে clock ও stop হয়ে যায়! ⏰",
+                "তুমি offline mode-এর advertisement! 📴"
+            ],
+            "general": [
+                "তুমি একটু বেশিই স্পেশাল! 😎",
+                "রোস্টিফাই বট সবসময় তোমার সাথে! 🤖",
+                "জীবনটা ছোট, রোস্ট লং! 😈",
+                "তোমার জন্য স্পেশাল রোস্ট! 😄",
+                "এক্সক্লুসিভ রোস্ট শুধু তোমার জন্য! 🎯"
+            ]
         }
     
-    def create_html_compatible_image(self, 
-                                    primary_html: str, 
-                                    secondary_html: str = "",
-                                    user_id: Optional[int] = None) -> Any:
-        """HTML কম্পেটিবল ইমেজ তৈরি করে"""
-        # Remove HTML tags for image text
-        import re
-        clean_primary = re.sub(r'<[^>]+>', '', primary_html)
-        clean_secondary = re.sub(r'<[^>]+>', '', secondary_html)
+    def generate_roast(self, input_text="", user_name="User"):
+        """Generate a roast"""
+        try:
+            # Select random category
+            category = random.choice(["funny", "savage", "general"])
+            
+            # Get random roast
+            roast_text = random.choice(self.roasts[category])
+            
+            return {
+                "primary": roast_text,
+                "secondary": f"রোস্টিফাই বট | {user_name}",
+                "category": category,
+                "score": random.randint(1, 10)
+            }
+        except:
+            return {
+                "primary": "তোমার জন্য স্পেশাল রোস্ট! 😄",
+                "secondary": "রোস্টিফাই বট",
+                "category": "general",
+                "score": 5
+            }
+
+# ==================== HTML MESSAGE BUILDER ====================
+
+class HTMLMessageBuilder:
+    """Build HTML messages with borders"""
+    
+    def __init__(self):
+        self.colors = Config.HTML_COLORS
+        self.border_styles = Config.BORDER_STYLES
         
-        return self.create_roast_image(
-            primary_text=clean_primary[:100],
-            secondary_text=clean_secondary[:80],
-            user_id=user_id,
-            border_style=random.choice(list(self.border_styles.keys()))
+        # Word variations
+        self.word_variations = {
+            "welcome": ["স্বাগতম", "Welcome", "হ্যালো", "Hi", "আসসালামু আলাইকুম"],
+            "help": ["সাহায্য", "Help", "গাইড", "নির্দেশিকা"],
+            "roast": ["রোস্ট", "Roast", "মজা", "কমেডি"],
+            "stats": ["পরিসংখ্যান", "Stats", "ডাটা", "তথ্য"],
+            "bot": ["বট", "Bot", "রোবট"],
+            "fun": ["মজা", "Fun", "এনজয়", "আনন্দ"],
+            "error": ["সমস্যা", "Error", "এরর", "বাধা"]
+        }
+    
+    def get_random_word(self, key):
+        """Get random word variation"""
+        return random.choice(self.word_variations.get(key, [key]))
+    
+    def get_random_border(self):
+        """Get random border style"""
+        style = random.choice(list(self.border_styles.keys()))
+        symbols = self.border_styles[style]
+        return {
+            "style": style,
+            "top": symbols["top"] * 20,
+            "bottom": symbols["bottom"] * 20
+        }
+    
+    def create_message(self, title="", content="", footer="", add_border=True):
+        """Create HTML message"""
+        # Get random variations
+        random_title = self.get_random_word(title.lower()) if title else ""
+        random_footer = self.get_random_word(footer.lower()) if footer else ""
+        
+        # Build HTML
+        html_parts = []
+        
+        if random_title:
+            html_parts.append(f'<b>{random_title.upper()}</b>\n')
+        
+        html_parts.append(f'{content}\n')
+        
+        if random_footer:
+            html_parts.append(f'<i>{random_footer}</i>')
+        
+        message = '\n'.join(html_parts)
+        
+        # Add border if requested
+        if add_border:
+            border = self.get_random_border()
+            message = f"{border['top']}\n{message}\n{border['bottom']}"
+        
+        return message
+    
+    def create_command_response(self, command, user_name="", data=None):
+        """Create command response"""
+        responses = {
+            "start": self._get_start_message(user_name),
+            "help": self._get_help_message(),
+            "stats": self._get_stats_message(data) if data else "স্ট্যাটস লোড হচ্ছে...",
+            "roast": self._get_roast_message(),
+            "ping": self._get_ping_message(),
+            "leaderboard": self._get_leaderboard_message(data) if data else "লিডারবোর্ড লোড হচ্ছে...",
+            "error": self._get_error_message()
+        }
+        
+        return responses.get(command, responses["error"])
+    
+    def _get_start_message(self, user_name):
+        """Start message"""
+        return self.create_message(
+            title="welcome",
+            content=(
+                f"👋 <b>{user_name}!</b>\n\n"
+                "🤖 <i>রোস্টিফাই বটে স্বাগতম!</i>\n\n"
+                "✨ <u>ব্যবহার পদ্ধতি:</u>\n"
+                "• যেকোনো মেসেজ লিখুন\n"
+                "• রোস্ট ইমেজ পাবেন\n"
+                "• ভোট দিন রেটিং দিতে\n\n"
+                "⚡ <u>কমান্ডস:</u>\n"
+                "/help - সাহায্য\n"
+                "/roast - রোস্ট পান\n"
+                "/stats - স্ট্যাটস\n"
+                "/leaderboard - লিডারবোর্ড\n\n"
+                "😈 <b>মজা শুরু করি?</b>"
+            ),
+            footer="bot",
+            add_border=True
+        )
+    
+    def _get_help_message(self):
+        """Help message"""
+        return self.create_message(
+            title="help",
+            content=(
+                "📚 <u>রোস্টিফাই বট হেল্প</u>\n\n"
+                "🎯 <b>বট সম্পর্কে:</b>\n"
+                "আমি একটি রোস্ট বট। আপনার মেসেজ পড়ে স্মার্ট রোস্ট তৈরি করি।\n\n"
+                "⚡ <b>দ্রুত শুরু:</b>\n"
+                "1. যেকোনো মেসেজ লিখুন\n"
+                "2. রোস্ট ইমেজ পাবেন\n"
+                "3. ভোট দিন রেটিং দিতে\n\n"
+                "🛠️ <b>কমান্ড লিস্ট:</b>\n"
+                "• /roast - রোস্ট পান\n"
+                "• /stats - আপনার স্ট্যাটস\n"
+                "• /leaderboard - টপ প্লেয়ার\n"
+                "• /ping - বট চেক করুন\n"
+                "• /help - এই মেসেজ\n\n"
+                "🔒 <b>নিরাপত্তা:</b>\n"
+                "• সবই মজার জন্য\n"
+                "• কোনো অপমান নয়\n"
+                "• সম্পূর্ণ বিনামূল্যে"
+            ),
+            footer="support",
+            add_border=True
+        )
+    
+    def _get_stats_message(self, data):
+        """Stats message"""
+        return self.create_message(
+            title="stats",
+            content=(
+                f"📊 <b>পরিসংখ্যান</b>\n\n"
+                f"• মোট রোস্ট: <code>{data.get('roast_count', 0)}</code>\n"
+                f"• মোট ভোট: <code>{data.get('vote_count', 0)}</code>\n"
+                f"• যোগদান: <code>{data.get('created_at', 'N/A')[:10]}</code>\n"
+                f"• শেষ সক্রিয়: <code>{data.get('last_active', 'N/A')[:19]}</code>\n\n"
+                f"🏆 র‍্যাংক: <code>#{data.get('rank', 'N/A')}</code>\n"
+                f"🔥 স্ট্যাটাস: <code>সক্রিয়</code>"
+            ),
+            footer="updated",
+            add_border=True
+        )
+    
+    def _get_roast_message(self):
+        """Roast command message"""
+        return self.create_message(
+            title="roast",
+            content="রোস্ট তৈরি হচ্ছে... 🔥\n\nএকটু অপেক্ষা করুন!",
+            footer="processing",
+            add_border=True
+        )
+    
+    def _get_ping_message(self):
+        """Ping message"""
+        return self.create_message(
+            title="ping",
+            content=(
+                "🏓 <b>পং!</b>\n\n"
+                "• বট স্ট্যাটাস: <code>সক্রিয় ✅</code>\n"
+                "• সময়: <code>{}</code>\n"
+                "• সংস্করণ: <code>3.0</code>"
+            ).format(datetime.now().strftime("%H:%M:%S")),
+            footer="status",
+            add_border=True
+        )
+    
+    def _get_leaderboard_message(self, data):
+        """Leaderboard message"""
+        if not data:
+            return "লিডারবোর্ড খালি!"
+        
+        leaderboard_text = "🏆 <b>টপ ১০ রোস্টার</b>\n\n"
+        
+        for i, user in enumerate(data[:10], 1):
+            name = user.get('user_id', 'Unknown')
+            score = user.get('roast_count', 0)
+            
+            if i == 1:
+                medal = "🥇"
+            elif i == 2:
+                medal = "🥈"
+            elif i == 3:
+                medal = "🥉"
+            else:
+                medal = f"{i}."
+            
+            leaderboard_text += f"{medal} User_{name} - <code>{score}</code> রোস্ট\n"
+        
+        leaderboard_text += f"\n📅 আপডেট: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        
+        return self.create_message(
+            title="leaderboard",
+            content=leaderboard_text,
+            footer="competition",
+            add_border=True
+        )
+    
+    def _get_error_message(self):
+        """Error message"""
+        return self.create_message(
+            title="error",
+            content="কিছু সমস্যা হয়েছে! দয়া করে আবার চেষ্টা করুন।",
+            footer="retry",
+            add_border=True
         )
 
-# Global instance
-image_generator = AdvancedImageGenerator()
+# ==================== MAIN BOT CLASS ====================
 
-def get_image_generator() -> AdvancedImageGenerator:
-    """গ্লোবাল ইমেজ জেনারেটর ইনস্ট্যান্স রিটার্ন করে"""
-    return image_generator
-
-# Test function
-if __name__ == "__main__":
-    print("Testing Advanced Image Generator...")
+class RoastifyBot:
+    """Main bot class - No Errors"""
     
-    gen = get_image_generator()
-    stats = gen.get_image_stats()
+    def __init__(self):
+        """Initialize bot"""
+        try:
+            # Validate config
+            if not Config.validate():
+                logger.error("❌ Configuration validation failed!")
+                return
+            
+            # Initialize components
+            self.db = SimpleDatabase()
+            self.roast_engine = RoastEngine()
+            self.image_gen = SimpleImageGenerator()
+            self.html_builder = HTMLMessageBuilder()
+            
+            # Cooldown manager
+            self.cooldowns = {}
+            
+            # Statistics
+            self.stats = {
+                "start_time": datetime.now(),
+                "messages": 0,
+                "roasts": 0,
+                "errors": 0
+            }
+            
+            # Bot application
+            self.application = None
+            
+            logger.info("✅ Roastify Bot initialized successfully!")
+            
+        except Exception as e:
+            logger.error(f"❌ Bot initialization failed: {e}")
     
-    print(f"\n📊 Generator Stats:")
-    for key, value in stats.items():
-        print(f"  {key}: {value}")
+    def setup_application(self):
+        """Setup Telegram application"""
+        try:
+            self.application = (
+                ApplicationBuilder()
+                .token(Config.BOT_TOKEN)
+                .pool_timeout(30)
+                .build()
+            )
+            
+            # Register handlers
+            self._register_handlers()
+            
+            logger.info("✅ Application setup completed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Application setup failed: {e}")
+            return False
     
-    # Test image creation
-    test_image = gen.create_roast_image(
-        primary_text="This is a test roast for HTML compatibility!",
-        secondary_text="Roastify Bot Professional Edition",
-        user_id=123456,
-        roast_type="savage",
-        border_style="fire"
-    )
-    
-    if test_image:
-        save_path = gen.save_image(test_image, "test_output.png")
-        print(f"✅ Test image saved: {save_path}")
+    def _register_handlers(self):
+        """Register all handlers"""
+        # Command handlers
+        commands = [
+            ("start", self.handle_start),
+            ("help", self.handle_help),
+            ("roast", self.handle_roast),
+            ("stats", self.handle_stats),
+            ("leaderboard", self.handle_leaderboard),
+            ("ping", self.handle_ping),
+            ("info", self.handle_info),
+        ]
         
-        # Test bytes conversion
-        image_bytes = gen.image_to_bytes(test_image)
-        print(f"✅ Bytes conversion successful: {len(image_bytes.getvalue())} bytes")
+        for cmd, handler in commands:
+            self.application.add_handler(CommandHandler(cmd, handler))
+        
+        # Message handler
+        self.application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            self.handle_text_message
+        ))
+        
+        # Error handler
+        self.application.add_error_handler(self.handle_error)
+        
+        logger.info(f"✅ Registered {len(commands)} commands")
     
-    print("\n✨ Testing completed!")
+    async def set_bot_commands(self):
+        """Set bot commands"""
+        try:
+            commands = [
+                ("start", "বট শুরু করুন"),
+                ("help", "সাহায্য পান"),
+                ("roast", "রোস্ট পান"),
+                ("stats", "আপনার স্ট্যাটস"),
+                ("leaderboard", "লিডারবোর্ড দেখুন"),
+                ("ping", "বট চেক করুন"),
+            ]
+            
+            await self.application.bot.set_my_commands(commands)
+            logger.info("✅ Bot commands set")
+        except Exception as e:
+            logger.error(f"❌ Failed to set commands: {e}")
+    
+    # ==================== COMMAND HANDLERS ====================
+    
+    async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command"""
+        try:
+            user = update.effective_user
+            
+            # Register user
+            self.db.get_user(user.id)
+            
+            # Send welcome message
+            welcome_msg = self.html_builder.create_command_response("start", user.first_name)
+            
+            # Try to send image
+            try:
+                image = self.image_gen.create_roast_image(
+                    primary_text=f"স্বাগতম {user.first_name}!",
+                    secondary_text="রোস্টিফাই বটে আপনাকে স্বাগতম",
+                    user_id=user.id
+                )
+                
+                if image:
+                    image_bytes = self.image_gen.image_to_bytes(image)
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=image_bytes,
+                        caption=welcome_msg,
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    await update.message.reply_text(welcome_msg, parse_mode=ParseMode.HTML)
+            except:
+                await update.message.reply_text(welcome_msg, parse_mode=ParseMode.HTML)
+            
+            self.stats["messages"] += 1
+            logger.info(f"User {user.id} started bot")
+            
+        except Exception as e:
+            logger.error(f"Start error: {e}")
+            await self._send_error(update)
+    
+    async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command"""
+        try:
+            help_msg = self.html_builder.create_command_response("help")
+            await update.message.reply_text(help_msg, parse_mode=ParseMode.HTML)
+            
+        except Exception as e:
+            logger.error(f"Help error: {e}")
+            await self._send_error(update)
+    
+    async def handle_roast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /roast command"""
+        try:
+            user = update.effective_user
+            chat = update.effective_chat
+            
+            # Check cooldown
+            if not self._check_cooldown(user.id, chat.id):
+                cooldown_msg = self.html_builder.create_message(
+                    title="cooldown",
+                    content="⏳ দয়া করে কিছুক্ষণ অপেক্ষা করুন!",
+                    footer="wait",
+                    add_border=True
+                )
+                await update.message.reply_text(cooldown_msg, parse_mode=ParseMode.HTML)
+                return
+            
+            # Generate roast
+            roast_data = self.roast_engine.generate_roast(user_name=user.first_name)
+            
+            # Send typing action
+            await context.bot.send_chat_action(
+                chat_id=chat.id,
+                action="upload_photo"
+            )
+            
+            # Create and send image
+            image = self.image_gen.create_roast_image(
+                primary_text=roast_data["primary"],
+                secondary_text=roast_data["secondary"],
+                user_id=user.id,
+                style=roast_data["category"]
+            )
+            
+            if image:
+                image_bytes = self.image_gen.image_to_bytes(image)
+                
+                # Send image with caption
+                caption = self.html_builder.create_message(
+                    title="roast",
+                    content=f"🔥 {roast_data['primary']}",
+                    footer=f"Score: {roast_data['score']}/10",
+                    add_border=True
+                )
+                
+                await context.bot.send_photo(
+                    chat_id=chat.id,
+                    photo=image_bytes,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                    reply_to_message_id=update.message.message_id
+                )
+            else:
+                # Fallback text
+                text_msg = self.html_builder.create_message(
+                    title="roast",
+                    content=f"🔥 {roast_data['primary']}\n\n{roast_data['secondary']}",
+                    footer="রোস্টিফাই বট",
+                    add_border=True
+                )
+                await update.message.reply_text(text_msg, parse_mode=ParseMode.HTML)
+            
+            # Update database
+            self.db.increment_roast(user.id)
+            self.stats["roasts"] += 1
+            self.stats["messages"] += 1
+            
+            logger.info(f"Roast sent to {user.id}")
+            
+        except Exception as e:
+            logger.error(f"Roast error: {e}")
+            await self._send_error(update)
+    
+    async def handle_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /stats command"""
+        try:
+            user = update.effective_user
+            user_data = self.db.get_user(user.id)
+            
+            # Calculate rank
+            leaderboard = self.db.get_leaderboard()
+            rank = 1
+            for i, u in enumerate(leaderboard, 1):
+                if u["user_id"] == user.id:
+                    rank = i
+                    break
+            
+            # Add rank to data
+            user_data["rank"] = rank
+            
+            stats_msg = self.html_builder.create_command_response("stats", data=user_data)
+            await update.message.reply_text(stats_msg, parse_mode=ParseMode.HTML)
+            
+        except Exception as e:
+            logger.error(f"Stats error: {e}")
+            await self._send_error(update)
+    
+    async def handle_leaderboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /leaderboard command"""
+        try:
+            leaderboard = self.db.get_leaderboard(10)
+            leaderboard_msg = self.html_builder.create_command_response("leaderboard", data=leaderboard)
+            await update.message.reply_text(leaderboard_msg, parse_mode=ParseMode.HTML)
+            
+        except Exception as e:
+            logger.error(f"Leaderboard error: {e}")
+            await self._send_error(update)
+    
+    async def handle_ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /ping command"""
+        try:
+            ping_msg = self.html_builder.create_command_response("ping")
+            await update.message.reply_text(ping_msg, parse_mode=ParseMode.HTML)
+            
+        except Exception as e:
+            logger.error(f"Ping error: {e}")
+            await self._send_error(update)
+    
+    async def handle_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /info command"""
+        try:
+            uptime = datetime.now() - self.stats["start_time"]
+            bot_stats = self.db.get_stats()
+            
+            info_text = (
+                f"🤖 <b>রোস্টিফাই বট - তথ্য</b>\n\n"
+                f"📊 <u>পরিসংখ্যান:</u>\n"
+                f"• মোট ইউজার: <code>{bot_stats['active_users']}</code>\n"
+                f"• মোট রোস্ট: <code>{bot_stats['total_roasts']}</code>\n"
+                f"• আপটাইম: <code>{str(uptime).split('.')[0]}</code>\n"
+                f"• এরর: <code>{self.stats['errors']}</code>\n\n"
+                f"⚙️ <u>প্রযুক্তি:</u>\n"
+                f"• Python Telegram Bot\n"
+                f"• HTML Formatting\n"
+                f"• JSON Database\n\n"
+                f"👑 <u>তথ্য:</u>\n"
+                f"• ওনার: <code>{Config.OWNER_ID}</code>\n"
+                f"• বট: @{Config.BOT_USERNAME}\n"
+                f"• সংস্করণ: 3.0"
+            )
+            
+            info_msg = self.html_builder.create_message(
+                title="info",
+                content=info_text,
+                footer="roastify",
+                add_border=True
+            )
+            
+            await update.message.reply_text(info_msg, parse_mode=ParseMode.HTML)
+            
+        except Exception as e:
+            logger.error(f"Info error: {e}")
+            await self._send_error(update)
+    
+    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle text messages"""
+        try:
+            user = update.effective_user
+            chat = update.effective_chat
+            text = update.message.text
+            
+            self.stats["messages"] += 1
+            
+            # Check for very short messages
+            if len(text) < Config.MIN_ROAST_LENGTH:
+                return
+            
+            # Check cooldown
+            if not self._check_cooldown(user.id, chat.id):
+                return
+            
+            # Generate roast based on text
+            roast_data = self.roast_engine.generate_roast(input_text=text, user_name=user.first_name)
+            
+            # Send typing action
+            await context.bot.send_chat_action(
+                chat_id=chat.id,
+                action="upload_photo"
+            )
+            
+            # Create and send image
+            image = self.image_gen.create_roast_image(
+                primary_text=roast_data["primary"],
+                secondary_text=roast_data["secondary"],
+                user_id=user.id,
+                style=roast_data["category"]
+            )
+            
+            if image:
+                image_bytes = self.image_gen.image_to_bytes(image)
+                
+                caption = self.html_builder.create_message(
+                    title="roast",
+                    content=f"🔥 {roast_data['primary']}",
+                    footer=f"{user.first_name}'র রোস্ট",
+                    add_border=True
+                )
+                
+                await context.bot.send_photo(
+                    chat_id=chat.id,
+                    photo=image_bytes,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                    reply_to_message_id=update.message.message_id
+                )
+            else:
+                # Fallback text
+                text_msg = self.html_builder.create_message(
+                    title="roast",
+                    content=f"🔥 {roast_data['primary']}",
+                    footer="রোস্টিফাই বট",
+                    add_border=True
+                )
+                await update.message.reply_text(text_msg, parse_mode=ParseMode.HTML)
+            
+            # Update database
+            self.db.increment_roast(user.id)
+            self.stats["roasts"] += 1
+            
+            logger.info(f"Auto roast for {user.id}")
+            
+        except Exception as e:
+            logger.error(f"Text message error: {e}")
+            self.stats["errors"] += 1
+    
+    def _check_cooldown(self, user_id, chat_id):
+        """Check user cooldown"""
+        key = f"{user_id}_{chat_id}"
+        current_time = time.time()
+        
+        if key in self.cooldowns:
+            last_time = self.cooldowns[key]
+            if current_time - last_time < Config.COOLDOWN_SECONDS:
+                return False
+        
+        self.cooldowns[key] = current_time
+        return True
+    
+    async def _send_error(self, update):
+        """Send error message"""
+        try:
+            error_msg = self.html_builder.create_command_response("error")
+            await update.message.reply_text(error_msg, parse_mode=ParseMode.HTML)
+        except:
+            pass
+    
+    async def handle_error(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle errors"""
+        try:
+            self.stats["errors"] += 1
+            
+            error_msg = str(context.error)[:200]
+            logger.error(f"Bot error: {error_msg}")
+            
+            # Notify owner
+            if Config.OWNER_ID:
+                try:
+                    await context.bot.send_message(
+                        chat_id=Config.OWNER_ID,
+                        text=f"⚠️ Bot Error:\n\n<code>{error_msg}</code>",
+                        parse_mode=ParseMode.HTML
+                    )
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"Error handler error: {e}")
+    
+    # ==================== BOT CONTROL ====================
+    
+    async def start_bot(self):
+        """Start the bot"""
+        try:
+            logger.info("🚀 Starting Roastify Bot...")
+            
+            if not self.setup_application():
+                raise Exception("Application setup failed")
+            
+            # Set commands
+            await self.set_bot_commands()
+            
+            # Get bot info
+            bot_info = await self.application.bot.get_me()
+            logger.info(f"🤖 Bot Info: @{bot_info.username} (ID: {bot_info.id})")
+            
+            # Start
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling()
+            
+            logger.info("✅ Bot started successfully!")
+            logger.info("📡 Listening for messages...")
+            
+            # Keep running
+            await self._keep_running()
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to start bot: {e}")
+            await self.stop_bot()
+    
+    async def _keep_running(self):
+        """Keep bot running"""
+        try:
+            while True:
+                await asyncio.sleep(1)
+                
+                # Log status every 5 minutes
+                if int(time.time()) % 300 == 0:
+                    logger.info(f"📊 Status: Msgs: {self.stats['messages']} | Roasts: {self.stats['roasts']} | Errors: {self.stats['errors']}")
+                    
+        except asyncio.CancelledError:
+            logger.info("Bot stopped")
+        except Exception as e:
+            logger.error(f"Keep running error: {e}")
+    
+    async def stop_bot(self):
+        """Stop the bot"""
+        try:
+            logger.info("🛑 Stopping bot...")
+            
+            if self.application:
+                await self.application.stop()
+                await self.application.shutdown()
+            
+            logger.info("✅ Bot stopped")
+            
+        except Exception as e:
+            logger.error(f"Stop error: {e}")
+
+# ==================== MAIN FUNCTION ====================
+
+async def main():
+    """Main function"""
+    try:
+        print("\n" + "="*60)
+        print("🤖 ROASTIFY BOT - FINAL VERSION")
+        print("="*60)
+        print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("="*60 + "\n")
+        
+        # Check token
+        if Config.BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+            print("❌ ERROR: Please set BOT_TOKEN in environment variables!")
+            print("❌ Or edit Config class in bot.py")
+            return
+        
+        # Create and run bot
+        bot = RoastifyBot()
+        await bot.start_bot()
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Bot stopped by user")
+    except Exception as e:
+        print(f"\n❌ Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        print("\n👋 Goodbye!")
+        print("="*60)
+
+if __name__ == "__main__":
+    # Run the bot
+    asyncio.run(main())
