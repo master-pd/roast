@@ -1,685 +1,414 @@
-#!/usr/bin/env python3
-"""
-🤖 Roastify Telegram Bot - Simplified Version
-✅ Works with your current structure
-✅ No dynamic loading, simple imports
-✅ Ready to run
-"""
-
-import os
-import sys
 import asyncio
-import random
-import traceback
-from datetime import datetime
-from typing import Dict, List, Optional
-
-# Telegram imports
-from telegram import (
-    Update, 
-    BotCommand, 
-    InlineKeyboardMarkup, 
-    InlineKeyboardButton,
-    InputFile
-)
+from pathlib import Path
+from telegram import Update, BotCommand
 from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
+    ApplicationBuilder, 
+    CommandHandler, 
+    MessageHandler, 
+    ChatMemberHandler, 
     CallbackQueryHandler,
-    ContextTypes,
-    filters
+    filters,
+    ContextTypes
 )
-from telegram.constants import ParseMode, ChatAction
-
-# Import configuration
 from config import Config
-
-# Import modules from your existing structure
-from utils.logger import logger, log_error, log_info
+from utils.logger import logger
 from utils.time_manager import TimeManager
-from utils.helpers import Helpers
-from utils.text_processor import TextProcessor
 from database.storage import StorageManager
-from database.models import init_database, User, Roast
+from database.models import init_database
 from roast_engine.roaster import RoastEngine
-from roast_engine.safety_check import safety_checker
-from image_engine.image_generator import get_image_generator
+from roast_engine.safety_check import SafetyChecker
+from image_engine.image_generator import ImageGenerator
 from features.welcome_system import WelcomeSystem
 from features.vote_system import VoteSystem
 from features.mention_system import MentionSystem
 from features.reaction_system import ReactionSystem
 from features.admin_protection import AdminProtection
-from features.sticker_maker import StickerMaker
-from features.quote_of_day import QuoteOfDay
-
+from features.auto_quotes import AutoQuoteSystem
 
 class RoastifyBot:
-    """রোস্টিফাই বট - Simplified Version"""
-    
     def __init__(self):
-        """বট ইনিশিয়ালাইজেশন"""
-        try:
-            # Validate configuration
-            if hasattr(Config, 'validate'):
-                Config.validate()
-            
-            # Initialize database
-            init_database()
-            
-            # Initialize components with proper error handling
-            self._initialize_components()
-            
-            # Bot state
-            self.application = None
-            self.is_running = False
-            self.user_cooldowns = {}
-            
-            # Stats
-            self.stats = {
-                'total_messages': 0,
-                'total_roasts': 0,
-                'total_errors': 0,
-                'start_time': datetime.now()
-            }
-            
-            # Random styles
-            self.border_styles = self._get_border_styles()
-            self.word_variations = self._get_word_variations()
-            
-            logger.info("✅ RoastifyBot (Simplified) initialized successfully")
-            
-        except Exception as e:
-            error_msg = f"Failed to initialize bot: {e}"
-            print(f"❌ {error_msg}")
-            traceback.print_exc()
-            raise
-    
-    def _initialize_components(self):
-        """সব কম্পোনেন্ট ইনিশিয়ালাইজ করুন"""
-        # Core modules (must have)
-        self.logger = logger
-        self.time_manager = TimeManager()
-        self.helpers = Helpers()
-        self.text_processor = TextProcessor()
-        
-        # Initialize with error handling
-        try:
-            self.roast_engine = RoastEngine()
-            logger.info("✅ RoastEngine initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize RoastEngine: {e}")
-            self.roast_engine = None
-        
-        try:
-            self.safety_checker = safety_checker
-            logger.info("✅ SafetyChecker initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize SafetyChecker: {e}")
-            self.safety_checker = None
-        
-        try:
-            self.image_generator = get_image_generator()
-            logger.info("✅ ImageGenerator initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize ImageGenerator: {e}")
-            self.image_generator = None
-        
-        try:
-            self.welcome_system = WelcomeSystem()
-            logger.info("✅ WelcomeSystem initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize WelcomeSystem: {e}")
-            self.welcome_system = None
-        
-        try:
-            self.vote_system = VoteSystem()
-            logger.info("✅ VoteSystem initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize VoteSystem: {e}")
-            self.vote_system = None
-        
-        try:
-            self.mention_system = MentionSystem()
-            logger.info("✅ MentionSystem initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize MentionSystem: {e}")
-            self.mention_system = None
-        
-        try:
-            self.reaction_system = ReactionSystem()
-            logger.info("✅ ReactionSystem initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize ReactionSystem: {e}")
-            self.reaction_system = None
-        
-        try:
-            self.admin_protection = AdminProtection()
-            logger.info("✅ AdminProtection initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize AdminProtection: {e}")
-            self.admin_protection = None
-        
-        try:
-            self.sticker_maker = StickerMaker()
-            logger.info("✅ StickerMaker initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize StickerMaker: {e}")
-            self.sticker_maker = None
-        
-        try:
-            # Note: QuoteOfDay needs bot instance
-            self.quote_of_day = QuoteOfDay(self)
-            logger.info("✅ QuoteOfDay initialized")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize QuoteOfDay: {e}")
-            self.quote_of_day = None
-    
-    def _get_border_styles(self):
-        """বর্ডার স্টাইলস"""
-        return {
-            "fire": {"top": "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥", "bottom": "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"},
-            "star": {"top": "✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦", "bottom": "✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦✦"},
-            "heart": {"top": "❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️", "bottom": "❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️"},
-            "diamond": {"top": "💎💎💎💎💎💎💎💎💎💎", "bottom": "💎💎💎💎💎💎💎💎💎💎"},
-            "wave": {"top": "〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️", "bottom": "〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️"},
-        }
-    
-    def _get_word_variations(self):
-        """শব্দ ভেরিয়েশন"""
-        return {
-            "welcome": ["স্বাগতম", "আসসালামু আলাইকুম", "Welcome"],
-            "help": ["সাহায্য", "হেল্প", "গাইড"],
-            "roast": ["রোস্ট", "মজা", "জোক"],
-            "funny": ["মজার", "হাসির", "কৌতুক"],
-            "thanks": ["ধন্যবাদ", "Thank you", "শুকরিয়া"],
-        }
-    
-    def _get_random_border(self):
-        """র‍্যান্ডম বর্ডার সিলেক্ট করুন"""
-        style_name = random.choice(list(self.border_styles.keys()))
-        return self.border_styles[style_name]
-    
-    def _get_random_word(self, key):
-        """র‍্যান্ডম শব্দ দিন"""
-        if key in self.word_variations:
-            return random.choice(self.word_variations[key])
-        return key
-    
-    # ==================== COMMAND HANDLERS ====================
-    
-    async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/start command"""
-        try:
-            user = update.effective_user
-            
-            # Log user
-            logger.info(f"User {user.id} started the bot")
-            
-            # Send welcome message
-            border = self._get_random_border()
-            welcome_text = f"{border['top']}\n"
-            welcome_text += f"🤖 **{self._get_random_word('welcome')} {user.first_name}!**\n\n"
-            welcome_text += "আমি **রোস্টিফাই বট**। 😈\n"
-            welcome_text += "তুমি লেখো, বাকি অপমান আমি করবো!\n\n"
-            welcome_text += "**কিভাবে ব্যবহার করবেন:**\n"
-            welcome_text += "১. শুধু একটি মেসেজ লিখুন\n"
-            welcome_text += "২. বট অটোমেটিক রোস্ট করবে\n"
-            welcome_text += "৩. ইমেজ সহ রিপ্লাই পাবেন\n\n"
-            welcome_text += "**কমান্ড লিস্ট:**\n"
-            welcome_text += "/start - বট শুরু করুন\n"
-            welcome_text += "/help - সাহায্য\n"
-            welcome_text += "/roast - র‍্যান্ডম রোস্ট\n"
-            welcome_text += "/quote - আজকের উক্তি\n"
-            welcome_text += "/ping - বট চেক\n"
-            welcome_text += "/info - বট তথ্য\n\n"
-            welcome_text += "🔥 **এখনই একটি মেসেজ লিখে টেস্ট করুন!**"
-            welcome_text += f"\n{border['bottom']}"
-            
-            await update.message.reply_text(welcome_text, parse_mode=ParseMode.HTML)
-            
-            self.stats['total_messages'] += 1
-            
-        except Exception as e:
-            error_msg = f"Error in handle_start: {e}"
-            logger.error(error_msg)
-            await update.message.reply_text("❌ বট শুরু করতে সমস্যা! আবার চেষ্টা করুন।")
-    
-    async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/help command"""
-        try:
-            help_text = "📖 **রোস্টিফাই বট - হেল্প মেনু**\n\n"
-            help_text += "**বেসিক কমান্ডস:**\n"
-            help_text += "• /start - বট শুরু করুন\n"
-            help_text += "• /help - এই হেল্প মেসেজ\n"
-            help_text += "• /roast - র‍্যান্ডম রোস্ট পান\n"
-            help_text += "• /quote - আজকের বিশেষ উক্তি\n"
-            help_text += "• /ping - বট লাইভ চেক\n"
-            help_text += "• /info - বট সম্পর্কে তথ্য\n\n"
-            
-            help_text += "**এডভান্সড ফিচারস:**\n"
-            help_text += "• ইমেজ জেনারেশন\n"
-            help_text += "• বাংলা/ইংরেজি সাপোর্ট\n"
-            help_text += "• ভোট সিস্টেম\n"
-            help_text += "• স্টিকার তৈরি\n"
-            help_text += "• ডেইলি কোটস\n\n"
-            
-            help_text += "**কিভাবে কাজ করে:**\n"
-            help_text += "১. আপনি একটি মেসেজ লিখুন\n"
-            help_text += "২. বট স্মার্ট রোস্ট জেনারেট করবে\n"
-            help_text += "৩. ইমেজ সহ রিপ্লাই পাবেন\n\n"
-            
-            help_text += "⚠️ **দ্রষ্টব্য:** সবকিছু শুধু মজার জন্য!"
-            
-            await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            error_msg = f"Error in handle_help: {e}"
-            logger.error(error_msg)
-    
-    async def handle_roast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/roast command - generate random roast"""
-        try:
-            user = update.effective_user
-            
-            # Generate roast
-            roast_text = self._generate_roast_text(user)
-            
-            # Send with random border
-            border = self._get_random_border()
-            message = f"{border['top']}\n"
-            message += f"🔥 **{self._get_random_word('roast')} টাইম!**\n\n"
-            message += f"_{roast_text}_\n\n"
-            message += f"— {user.first_name}\n"
-            message += border['bottom']
-            
-            await update.message.reply_text(message, parse_mode=ParseMode.HTML)
-            
-            self.stats['total_roasts'] += 1
-            logger.info(f"Roast sent to user {user.id}")
-            
-        except Exception as e:
-            error_msg = f"Error in handle_roast: {e}"
-            logger.error(error_msg)
-            await update.message.reply_text("❌ রোস্ট জেনারেট করতে সমস্যা!")
-    
-    def _generate_roast_text(self, user):
-        """রোস্ট টেক্সট জেনারেট করুন"""
-        roasts = [
-            f"{user.first_name}, তুমি তো একদম চমৎকার! 😂",
-            f"ওহো {user.first_name}! আজকে মড কেমন? 😈",
-            f"{user.first_name} এর জন্য বিশেষ রোস্ট! 🔥",
-            f"একটু চিন্তা করছি {user.first_name}... হ্যাঁ পেয়ে গেছি! 🤔",
-            f"রেডি {user.first_name}? হোল্ড অন টাইট! 🎯",
-            f"{user.first_name}, তোমার জন্য ফ্রেশ রোস্ট! ☕",
-            f"শুনো {user.first_name}, এটা শুনে হাসবি না! 😜",
-            f"তুমি তো {user.first_name} একদম প্রো! 💪",
-        ]
-        
-        if self.roast_engine:
-            try:
-                return self.roast_engine.generate_roast(user_id=user.id)
-            except:
-                pass
-        
-        return random.choice(roasts)
-    
-    async def handle_quote(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/quote command - daily quote"""
-        try:
-            if self.quote_of_day:
-                quote_data = self.quote_of_day.get_todays_quote()
-                quote_text = f"\"{quote_data['text']}\"\n— _{quote_data['author']}_"
-            else:
-                quotes = [
-                    {"text": "জীবনে সবচেয়ে বড় শিক্ষা হলো নিজেকে চেনা", "author": "অজানা"},
-                    {"text": "পরিশ্রম সৌভাগ্যের প্রসূতি", "author": "প্রবাদ"},
-                    {"text": "হাসতে হাসতে জীবন কাটাও", "author": "রোস্টিফাই বট"},
-                    {"text": "ভালোবাসা কোন কথা নয়, এটি একটি অনুভূতি", "author": "রবীন্দ্রনাথ ঠাকুর"},
-                ]
-                quote = random.choice(quotes)
-                quote_text = f"\"{quote['text']}\"\n— _{quote['author']}_"
-            
-            border = self._get_random_border()
-            message = f"{border['top']}\n"
-            message += f"📖 **আজকের উক্তি**\n\n"
-            message += f"{quote_text}\n\n"
-            message += f"✨ _রোস্টিফাই বট_"
-            message += f"\n{border['bottom']}"
-            
-            await update.message.reply_text(message, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            error_msg = f"Error in handle_quote: {e}"
-            logger.error(error_msg)
-            await update.message.reply_text("❌ উক্তি লোড করতে সমস্যা!")
-    
-    async def handle_ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/ping command - check bot status"""
-        try:
-            start_time = datetime.now()
-            
-            ping_msg = await update.message.reply_text("🏓 পিং...")
-            
-            end_time = datetime.now()
-            latency = (end_time - start_time).total_seconds() * 1000
-            
-            uptime = datetime.now() - self.stats['start_time']
-            uptime_str = str(uptime).split('.')[0]
-            
-            status_text = f"✅ **বট স্ট্যাটাস**\n\n"
-            status_text += f"⚡ রেসপন্স টাইম: `{latency:.0f}ms`\n"
-            status_text += f"⏰ আপটাইম: `{uptime_str}`\n"
-            status_text += f"📊 মেসেজ: `{self.stats['total_messages']}`\n"
-            status_text += f"🔥 রোস্ট: `{self.stats['total_roasts']}`\n"
-            status_text += f"❌ এরর: `{self.stats['total_errors']}`\n\n"
-            status_text += f"🟢 **স্ট্যাটাস: অ্যাকটিভ**"
-            
-            await ping_msg.edit_text(status_text, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            error_msg = f"Error in handle_ping: {e}"
-            logger.error(error_msg)
-            await update.message.reply_text("❌ পিং টেস্ট ফেইল!")
-    
-    async def handle_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """/info command - bot information"""
-        try:
-            info_text = "🤖 **রোস্টিফাই বট - ইনফরমেশন**\n\n"
-            info_text += "**বট সম্পর্কে:**\n"
-            info_text += "রোস্টিফাই বট একটি এডভান্সড রোস্ট জেনারেটর বট।\n"
-            info_text += "মজা করার জন্য ডিজাইন করা হয়েছে।\n\n"
-            
-            info_text += "**ফিচারস:**\n"
-            info_text += "• স্মার্ট রোস্ট জেনারেশন\n"
-            info_text += "• ইমেজ ক্রিয়েশন\n"
-            info_text += "• মাল্টি-ল্যাঙ্গুয়েজ\n"
-            info_text += "• ডেইলি কোটস\n"
-            info_text += "• ভোট সিস্টেম\n"
-            info_text += "• স্টিকার মেকার\n\n"
-            
-            info_text += "**টেকনোলজি:**\n"
-            info_text += "• Python 3.12\n"
-            info_text += "• Python-Telegram-Bot\n"
-            info_text += "• SQLAlchemy\n"
-            info_text += "• Pillow (ইমেজ প্রসেসিং)\n\n"
-            
-            info_text += f"**ভার্সন:** 2.0.0\n"
-            info_text += f"**ক্রিয়েটর:** রোস্টিফাই টিম\n\n"
-            
-            info_text += "⚠️ **নোট:** সবকিছু শুধু বিনোদনের জন্য!"
-            
-            await update.message.reply_text(info_text, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            error_msg = f"Error in handle_info: {e}"
-            logger.error(error_msg)
-    
-    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle text messages"""
-        try:
-            message = update.effective_message
-            user = update.effective_user
-            
-            self.stats['total_messages'] += 1
-            
-            # Check cooldown
-            if not self._check_cooldown(user.id):
-                await update.message.reply_text(
-                    "⏳ একটু ধৈর্য ধরুন! ৫ সেকেন্ড অপেক্ষা করুন।",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            # Check if message is too short
-            if len(message.text.strip()) < 3:
-                await update.message.reply_text(
-                    "📝 কমপক্ষে ৩ অক্ষর লিখুন!",
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            
-            # Generate roast
-            roast_text = self._generate_text_roast(message.text, user)
-            
-            # Send response with random style
-            response_style = random.choice(['border', 'simple', 'emoji'])
-            
-            if response_style == 'border':
-                border = self._get_random_border()
-                response = f"{border['top']}\n"
-                response += f"🎯 **রোস্ট রেসপন্স**\n\n"
-                response += f"_{roast_text}_\n\n"
-                response += f"✍️ ইনপুট: `{message.text[:50]}...`\n"
-                response += f"👤 ইউজার: {user.first_name}"
-                response += f"\n{border['bottom']}"
-            elif response_style == 'emoji':
-                response = f"🔥 **রোস্ট এলার্ট!** 🔥\n\n"
-                response += f"_{roast_text}_\n\n"
-                response += f"👉 {user.first_name}, এটা কি ঠিক? 😂"
-            else:
-                response = f"**রোস্ট:**\n{roast_text}\n\n— @{user.username or user.first_name}"
-            
-            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
-            
-            self.stats['total_roasts'] += 1
-            logger.info(f"Text roast for user {user.id}: {message.text[:50]}...")
-            
-        except Exception as e:
-            self.stats['total_errors'] += 1
-            error_msg = f"Error in handle_text_message: {e}"
-            logger.error(error_msg)
-            traceback.print_exc()
-            
-            await update.message.reply_text(
-                "😓 রোস্ট জেনারেট করতে সমস্যা! দয়া করে আবার চেষ্টা করুন।",
-                parse_mode=ParseMode.HTML
-            )
-    
-    def _generate_text_roast(self, text: str, user):
-        """টেক্সট ভিত্তিক রোস্ট জেনারেট করুন"""
-        if self.roast_engine:
-            try:
-                return self.roast_engine.generate_roast(text, user.id)
-            except:
-                pass
-        
-        # Fallback roasts based on text length
-        text_len = len(text)
-        
-        if text_len < 10:
-            roasts = [
-                f"ওহো {user.first_name}! এত ছোট মেসেজ? 😏",
-                f"{user.first_name}, একটু লম্বা লিখতে পারতে! 📝",
-                f"এটুকু? {user.first_name}, তোমার imagination কই? 🤔",
-            ]
-        elif text_len < 30:
-            roasts = [
-                f"হুমম... {user.first_name}, ভালো চেষ্টা! 👍",
-                f"{user.first_name}, মেসেজ দেখে বোঝা যাচ্ছে তুমি মজার! 😄",
-                f"এখন শোনো {user.first_name}, এই মেসেজের জন্য... 🤣",
-            ]
-        else:
-            roasts = [
-                f"ওহো {user.first_name}! তুমি তো novelist! 📚",
-                f"{user.first_name}, এত লম্বা মেসেজ? ধৈর্য ধন্যবাদ! ⏳",
-                f"হ্যাঁ {user.first_name}, পড়লাম! এখন আমার পালা... 😈",
-            ]
-        
-        return random.choice(roasts)
-    
-    def _check_cooldown(self, user_id: int) -> bool:
-        """কুলডাউন চেক করুন"""
-        current_time = datetime.now()
-        
-        if user_id in self.user_cooldowns:
-            last_time = self.user_cooldowns[user_id]
-            time_diff = (current_time - last_time).total_seconds()
-            
-            if time_diff < 5:  # 5 seconds cooldown
-                return False
-        
-        self.user_cooldowns[user_id] = current_time
-        return True
-    
-    # ==================== BOT CONTROL ====================
-    
-    def setup_application(self):
-        """টেলিগ্রাম অ্যাপ্লিকেশন সেটআপ"""
-        try:
-            self.application = (
-                ApplicationBuilder()
-                .token(Config.BOT_TOKEN)
-                .concurrent_updates(True)
-                .pool_timeout(30)
-                .connect_timeout(30)
-                .read_timeout(30)
-                .write_timeout(30)
-                .build()
-            )
-            
-            # Register handlers
-            self._register_handlers()
-            
-            logger.info("✅ Application setup completed")
-            return True
-            
-        except Exception as e:
-            error_msg = f"Application setup failed: {e}"
-            logger.error(error_msg)
-            return False
-    
+        Config.validate()
+        self.roast_engine = RoastEngine()
+        self.safety_checker = SafetyChecker()
+        self.image_generator = ImageGenerator()
+        self.welcome_system = WelcomeSystem()
+        self.vote_system = VoteSystem()
+        self.mention_system = MentionSystem()
+        self.reaction_system = ReactionSystem()
+        self.admin_protection = AdminProtection()
+        self.auto_quotes = AutoQuoteSystem()
+
+        init_database()
+        self.application = None
+        self.user_cooldowns = {}
+        logger.info("RoastifyBot initialized")
+
     def _register_handlers(self):
-        """হ্যান্ডলার রেজিস্টার করুন"""
+        """সকল হ্যান্ডলার রেজিস্টার করে"""
         # Command handlers
         self.application.add_handler(CommandHandler("start", self.handle_start))
         self.application.add_handler(CommandHandler("help", self.handle_help))
-        self.application.add_handler(CommandHandler("roast", self.handle_roast))
+        self.application.add_handler(CommandHandler("stats", self.handle_stats))
+        self.application.add_handler(CommandHandler("leaderboard", self.handle_leaderboard))
         self.application.add_handler(CommandHandler("quote", self.handle_quote))
-        self.application.add_handler(CommandHandler("ping", self.handle_ping))
-        self.application.add_handler(CommandHandler("info", self.handle_info))
-        
-        # Text message handler
+        self.application.add_handler(CommandHandler("admin", self.handle_admin))
+        self.application.add_handler(CommandHandler("protect_stats", self.handle_protect_stats))
+        self.application.add_handler(CommandHandler("reset_cooldowns", self.handle_reset_cooldowns))
+
+        # Message handlers
         self.application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT & ~filters.COMMAND, 
             self.handle_text_message
         ))
-        
-        logger.info("✅ All handlers registered successfully")
-    
+        self.application.add_handler(MessageHandler(
+            filters.TEXT & filters.Entity("mention"),
+            self.handle_mention
+        ))
+        self.application.add_handler(ChatMemberHandler(
+            self.handle_chat_member_update,
+            ChatMemberHandler.CHAT_MEMBER
+        ))
+        self.application.add_handler(MessageHandler(
+            filters.StatusUpdate.NEW_CHAT_MEMBERS,
+            self.handle_new_chat_members
+        ))
+
+        # Vote callback handlers
+        self.application.add_handler(CallbackQueryHandler(
+            self.vote_system.handle_vote_callback,
+            pattern="^vote_"
+        ))
+
+        # Error handler
+        self.application.add_error_handler(self.error_handler)
+        logger.info("All handlers registered")
+
+    def _register_jobs(self):
+        """জব/সিডিউলার রেজিস্টার করে"""
+        job_queue = self.application.job_queue
+
+        # Daily quote at 12:00 PM
+        job_queue.run_daily(
+            self._post_daily_quote_job,
+            time=TimeManager.get_current_time().replace(hour=12, minute=0, second=0),
+            days=(0, 1, 2, 3, 4, 5, 6),
+            name="daily_quote"
+        )
+
+        # Cleanup old data at 3:00 AM
+        job_queue.run_daily(
+            self._cleanup_data_job,
+            time=TimeManager.get_current_time().replace(hour=3, minute=0, second=0),
+            days=(0, 1, 2, 3, 4, 5, 6),
+            name="cleanup_data"
+        )
+
+        # Reset reaction cooldowns hourly
+        job_queue.run_repeating(
+            self._reset_cooldowns_job,
+            interval=3600,
+            first=10,
+            name="reset_cooldowns"
+        )
+
+        logger.info("Jobs scheduled")
+
+    async def _post_daily_quote_job(self, context: ContextTypes.DEFAULT_TYPE):
+        """ডেইলি কোট জব"""
+        await self.auto_quotes.post_daily_quote(context)
+
+    async def _cleanup_data_job(self, context: ContextTypes.DEFAULT_TYPE):
+        """ডাটা ক্লিনআপ জব"""
+        StorageManager.cleanup_old_data(days=30)
+
+    async def _reset_cooldowns_job(self, context: ContextTypes.DEFAULT_TYPE):
+        """কুলডাউন রিসেট জব"""
+        self.reaction_system.reset_cooldowns()
+
     async def _set_bot_commands(self):
-        """বট কমান্ডস সেট করুন"""
+        """বট কমান্ড সেট করে"""
+        commands = [
+            BotCommand("start", "বট শুরু করুন"),
+            BotCommand("help", "সাহায্য পান"),
+            BotCommand("stats", "আপনার স্ট্যাটস দেখুন"),
+            BotCommand("leaderboard", "লিডারবোর্ড দেখুন"),
+            BotCommand("quote", "র‍্যান্ডম কোট পান"),
+        ]
+        await self.application.bot.set_my_commands(commands)
+        logger.info("Bot commands set")
+
+    def run(self):
+        """বট চালু করে"""
         try:
-            commands = [
-                BotCommand("start", "বট শুরু করুন"),
-                BotCommand("help", "সাহায্য পান"),
-                BotCommand("roast", "র‍্যান্ডম রোস্ট পান"),
-                BotCommand("quote", "আজকের উক্তি পান"),
-                BotCommand("ping", "বট চেক করুন"),
-                BotCommand("info", "বট তথ্য"),
-            ]
+            # Create application
+            self.application = ApplicationBuilder().token(Config.BOT_TOKEN).build()
             
-            await self.application.bot.set_my_commands(commands)
-            logger.info("✅ Bot commands set successfully")
+            # Setup handlers and jobs
+            self._register_handlers()
+            self._register_jobs()
             
-        except Exception as e:
-            logger.error(f"Failed to set bot commands: {e}")
-    
-    async def run(self):
-        """বট রান করুন"""
-        try:
-            logger.info("🚀 Starting Roastify Bot...")
+            # Run the bot
+            logger.info("Starting RoastifyBot...")
             
-            if not self.setup_application():
-                raise Exception("Failed to setup application")
+            # Import event loop
+            import asyncio
             
-            # Initialize
-            await self.application.initialize()
-            
-            # Get bot info
-            bot_info = await self.application.bot.get_me()
-            logger.info(f"🤖 Bot Info: @{bot_info.username} (ID: {bot_info.id})")
+            # Get event loop and run
+            loop = asyncio.get_event_loop()
             
             # Set bot commands
-            await self._set_bot_commands()
-            
-            # Start
-            await self.application.start()
+            loop.run_until_complete(self._set_bot_commands())
             
             # Start polling
-            await self.application.updater.start_polling()
-            
-            logger.info("✅ Bot started successfully!")
-            logger.info("📡 Listening for messages...")
-            
-            self.is_running = True
-            
-            # Keep running
-            await self._keep_running()
+            self.application.run_polling(
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES
+            )
             
         except Exception as e:
-            logger.error(f"❌ Failed to start bot: {e}")
-            traceback.print_exc()
-            await self.stop()
-    
-    async def _keep_running(self):
-        """বট চলমান রাখুন"""
+            logger.error(f"Failed to start bot: {e}")
+            raise
+
+    # ========== ASYNC COMMAND HANDLERS ==========
+
+    async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """বট শুরু করতে"""
+        await self.welcome_system.handle_bot_start(update, context)
+
+    async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """সাহায্য দেখায়"""
+        help_text = (
+            "🤖 *Roastify Bot Help*\n\n"
+            "*কীভাবে ব্যবহার করবেন:*\n"
+            "• শুধু মেসেজ লিখুন, রোস্ট ইমেজ পাবেন\n"
+            "• গ্রুপে কাউকে মেনশন করুন রোস্টের জন্য\n"
+            "• ভোট দিয়ে রেটিং দিন\n\n"
+            "*কমান্ডস:*\n"
+            "/start - বট শুরু করুন\n"
+            "/stats - আপনার স্ট্যাটস\n"
+            "/leaderboard - টপ রোস্টেড ইউজার\n"
+            "/quote - র‍্যান্ডম কোট\n\n"
+            "*নিয়ম:*\n"
+            "• অপমানজনক ভাষা ব্যবহার করবেন না\n"
+            "• বট ওনার/অ্যাডমিনকে রেসপেক্ট করুন\n\n"
+            f"বট: @{Config.BOT_USERNAME}"
+        )
+        await update.message.reply_text(help_text, parse_mode="Markdown")
+
+    async def handle_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """ইউজার স্ট্যাটস দেখায়"""
+        user = update.effective_user
+        
+        # Get user from database
+        with StorageManager.get_session() as db:
+            from database.models import User
+            user_record = db.query(User).filter(User.user_id == user.id).first()
+            
+            if user_record:
+                stats_text = (
+                    f"📊 *{user.first_name}'র স্ট্যাটস*\n\n"
+                    f"• মোট রোস্ট: {user_record.roast_count}\n"
+                    f"• মোট ভোট: {user_record.vote_count}\n"
+                    f"• রিএকশন: {user_record.reaction_count}\n"
+                    f"• যোগদান: {TimeManager.format_time(user_record.created_at)}\n"
+                )
+            else:
+                stats_text = "📊 *স্ট্যাটস পাওয়া যায়নি*\n\nআপনি এখনো কোনো রোস্ট পাননি!"
+        
+        await update.message.reply_text(stats_text, parse_mode="Markdown")
+
+    async def handle_leaderboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """লিডারবোর্ড দেখায়"""
+        leaderboard = StorageManager.get_leaderboard("most_roasted", limit=10)
+        
+        if not leaderboard:
+            await update.message.reply_text("📊 *লিডারবোর্ড খালি*\n\nএখনো কোনো ডাটা নেই!")
+            return
+        
+        leaderboard_text = "🏆 *টপ রোস্টেড ইউজার*\n\n"
+        
+        for entry in leaderboard:
+            medal = self._get_medal(entry["rank"])
+            username = entry["username"]
+            score = entry["score"]
+            
+            leaderboard_text += f"{medal} *{username}* - {score} রোস্ট\n"
+        
+        leaderboard_text += "\nরোস্ট খেতে চাইলে শুধু মেসেজ লিখুন! 😈"
+        
+        await update.message.reply_text(leaderboard_text, parse_mode="Markdown")
+
+    def _get_medal(self, rank: int) -> str:
+        """র‍্যাংক অনুযায়ী মেডেল রিটার্ন করে"""
+        if rank == 1:
+            return "🥇"
+        elif rank == 2:
+            return "🥈"
+        elif rank == 3:
+            return "🥉"
+        else:
+            return f"{rank}."
+
+    async def handle_quote(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """র‍্যান্ডম কোট পাঠায়"""
+        await self.auto_quotes.post_daily_quote(context, update.effective_chat.id)
+
+    async def handle_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """অ্যাডমিন প্যানেল দেখায়"""
+        user = update.effective_user
+        
+        if not self.safety_checker.is_owner_or_admin(user.id):
+            await update.message.reply_text("⚠️ এই কমান্ড শুধুমাত্র অ্যাডমিনদের জন্য!")
+            return
+        
+        admin_text = (
+            "👑 *অ্যাডমিন প্যানেল*\n\n"
+            "*কমান্ডস:*\n"
+            "/protect_stats - প্রটেকশন স্ট্যাটস\n"
+            "/reset_cooldowns - সব কুলডাউন রিসেট\n\n"
+            "*বট ইনফো:*\n"
+            f"ইউজার: @{Config.BOT_USERNAME}\n"
+            f"ওনার: {Config.OWNER_ID}\n"
+            f"ইউজার ID: {user.id}\n"
+            f"চ্যাট ID: {update.effective_chat.id if update.effective_chat else 'N/A'}"
+        )
+        
+        await update.message.reply_text(admin_text, parse_mode="Markdown")
+
+    async def handle_protect_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """প্রটেকশন স্ট্যাটস দেখায়"""
+        await self.admin_protection.handle_admin_command(update, context, "protect_stats")
+
+    async def handle_reset_cooldowns(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """কুলডাউন রিসেট করে"""
+        await self.admin_protection.handle_admin_command(update, context, "reset_cooldowns")
+
+    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """সাধারণ টেক্সট মেসেজ হ্যান্ডল করে"""
+        message = update.effective_message
+        user = update.effective_user
+        chat = update.effective_chat
+        
+        if not message.text:
+            return
+        
+        # 1. Check admin protection
+        if await self.admin_protection.check_and_protect(update, context):
+            return
+        
+        # 2. Check for mentions
+        if await self.mention_system.handle_mention(update, context):
+            return
+        
+        # 3. Validate input
+        if not self._validate_user_input(message.text, user.id, chat.id):
+            return
+        
+        # 4. Generate roast
+        roast_data = self.roast_engine.generate_roast(message.text, user.id)
+        
+        # 5. Create roast image
         try:
-            while self.is_running:
-                await asyncio.sleep(1)
-                
-                # Log status every 5 minutes
-                current_time = datetime.now()
-                if current_time.minute % 5 == 0 and current_time.second == 0:
-                    logger.info(f"📊 Status: Msg: {self.stats['total_messages']} | Roasts: {self.stats['total_roasts']} | Errors: {self.stats['total_errors']}")
-                    
-        except asyncio.CancelledError:
-            logger.info("Bot stopped by cancellation")
+            image = self.image_generator.create_roast_image(
+                primary_text=roast_data["primary"],
+                secondary_text=roast_data["secondary"],
+                user_id=user.id
+            )
+            
+            # Save image
+            image_path = self.image_generator.save_image(
+                image, 
+                f"roast_{user.id}_{chat.id}.png"
+            )
+            
+            # Send image
+            with open(image_path, 'rb') as photo:
+                sent_message = await context.bot.send_photo(
+                    chat_id=chat.id,
+                    photo=photo,
+                    reply_to_message_id=message.message_id
+                )
+            
+            # Add vote buttons
+            await self.vote_system.add_vote_to_message(
+                update, context, sent_message.message_id, chat.id
+            )
+            
+            # Log roast
+            StorageManager.log_roast(
+                user_id=user.id,
+                input_text=message.text[:200],
+                roast_type=roast_data["category"],
+                template_used="auto_generated",
+                chat_id=chat.id
+            )
+            
+            # Increment user roast count
+            StorageManager.increment_user_roast_count(user.id)
+            
+            # Add auto-reactions
+            await self.reaction_system.analyze_and_react(update, context)
+            
+            logger.info(f"Roasted user {user.id} in chat {chat.id}")
+            
         except Exception as e:
-            logger.error(f"Error in keep_running: {e}")
-    
-    async def stop(self):
-        """বট স্টপ করুন"""
-        try:
-            logger.info("🛑 Stopping bot...")
-            
-            self.is_running = False
-            
-            if self.application:
-                await self.application.stop()
-                await self.application.shutdown()
-            
-            logger.info("✅ Bot stopped successfully")
-            
-        except Exception as e:
-            logger.error(f"Error stopping bot: {e}")
+            logger.error(f"Error handling message: {e}")
+            await message.reply_text("😓 ইমেজ তৈরি করতে সমস্যা! আবার চেষ্টা করুন।")
 
+    def _validate_user_input(self, text: str, user_id: int, chat_id: int) -> bool:
+        """ইউজার ইনপুট ভ্যালিডেট করে"""
+        # Check minimum length
+        if len(text) < Config.MIN_INPUT_LENGTH:
+            return False
+        
+        # Check safety
+        if not self.safety_checker.is_safe_content(text):
+            return False
+        
+        # Check for disallowed content
+        if self.safety_checker.contains_disallowed_content(text):
+            return False
+        
+        return True
 
-# ==================== MAIN FUNCTION ====================
+    async def handle_mention(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """মেনশন হ্যান্ডল করে"""
+        await self.mention_system.handle_mention(update, context)
 
-async def main():
-    """মেইন ফাংশন"""
-    try:
-        print("\n" + "="*50)
-        print("🤖 ROASTIFY BOT - SIMPLIFIED VERSION")
-        print("="*50 + "\n")
+    async def handle_chat_member_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """চ্যাট মেম্বার আপডেট হ্যান্ডল করে"""
+        # Handle bot being added to groups
+        difference = update.chat_member.difference()
         
-        # Create and run bot
-        bot = RoastifyBot()
-        await bot.run()
-        
-    except KeyboardInterrupt:
-        print("\n\n⚠️  বট বন্ধ করা হচ্ছে (Ctrl+C)...")
-        
-    except Exception as e:
-        print(f"\n❌ Fatal error: {e}")
-        traceback.print_exc()
-        
-    finally:
-        print("\n👋 Roastify Bot stopped")
-        print("="*50)
+        if difference.get("new_chat_member") and difference["new_chat_member"].user.id == context.bot.id:
+            # Bot was added to group
+            await self.welcome_system.handle_bot_added_to_group(update, context)
 
+    async def handle_new_chat_members(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """নতুন চ্যাট মেম্বার হ্যান্ডল করে"""
+        await self.welcome_system.handle_new_chat_members(update, context)
+
+    async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """এরর হ্যান্ডল করে"""
+        logger.error(f"Update error: {context.error}")
+        
+        # Notify owner about critical errors
+        if Config.OWNER_ID:
+            try:
+                error_msg = f"⚠️ *বট এরর*\n\n{str(context.error)[:200]}..."
+                await context.bot.send_message(
+                    chat_id=Config.OWNER_ID,
+                    text=error_msg,
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logger.error(f"Error notifying owner: {e}")
+
+# Simple runner function
+def main():
+    """মেইন রানার ফাংশন"""
+    bot = RoastifyBot()
+    bot.run()
 
 if __name__ == "__main__":
-    # Run the bot
-    asyncio.run(main())
+    main()
