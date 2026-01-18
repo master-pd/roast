@@ -1,1080 +1,946 @@
 #!/usr/bin/env python3
 """
-🤖 Roastify Telegram Bot - Final Fixed Version
-✅ No Errors | HTML Format | Border System | Professional
+🎨 Advanced Image Generator for Roastify Bot
+✅ Professional | Multiple Templates | Random Designs | No Errors
 """
 
 import os
 import sys
-import asyncio
-import logging
 import random
 import json
-import time
-import re
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+import math
+from datetime import datetime
+from typing import Dict, List, Tuple, Optional, Any
+from pathlib import Path
 from io import BytesIO
 
-# Telegram Imports
-from telegram import (
-    Update, 
-    InlineKeyboardButton, 
-    InlineKeyboardMarkup,
-    InputMediaPhoto
-)
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ChatMemberHandler,
-    ContextTypes,
-    filters
-)
-from telegram.constants import ParseMode
+# Import PIL
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageEnhance, ImageChops
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
-# Configure logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Add parent directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Fix path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config import Config
+from utils.logger import logger
+from utils.helpers import Helpers
 
-# ==================== CONFIGURATION ====================
+# ==================== ADVANCED TEMPLATE MANAGER ====================
 
-class Config:
-    """Bot Configuration - Safe with defaults"""
-    # Bot Credentials (SET THESE!)
-    BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-    BOT_USERNAME = os.getenv("BOT_USERNAME", "RoastifyBot")
-    OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
-    
-    # Image Settings
-    IMAGE_WIDTH = 600
-    IMAGE_HEIGHT = 450
-    
-    # Bot Behavior
-    COOLDOWN_SECONDS = 3
-    MAX_ROAST_LENGTH = 200
-    MIN_ROAST_LENGTH = 2
-    
-    # Database
-    DB_FILE = "roastify_data.json"
-    
-    # HTML Colors
-    HTML_COLORS = {
-        "primary": "#FF6B35",
-        "secondary": "#00B4D8", 
-        "accent": "#FFD166",
-        "danger": "#EF476F",
-        "success": "#06D6A0",
-        "warning": "#FFD166",
-        "info": "#118AB2",
-        "dark": "#212529",
-        "light": "#F8F9FA"
-    }
-    
-    # Border Styles
-    BORDER_STYLES = {
-        "fire": {"top": "🔥", "bottom": "🔥"},
-        "star": {"top": "✦", "bottom": "✦"},
-        "heart": {"top": "❤️", "bottom": "❤️"},
-        "diamond": {"top": "💎", "bottom": "💎"},
-        "arrow": {"top": "➤", "bottom": "◀"},
-        "wave": {"top": "〰️", "bottom": "〰️"},
-        "music": {"top": "♪", "bottom": "♪"},
-        "sparkle": {"top": "✨", "bottom": "✨"},
-        "zap": {"top": "⚡", "bottom": "⚡"},
-        "crown": {"top": "👑", "bottom": "👑"}
-    }
-    
-    @staticmethod
-    def validate():
-        """Validate configuration"""
-        if not Config.BOT_TOKEN or Config.BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-            logger.error("❌ BOT_TOKEN not set!")
-            return False
-        return True
-
-# ==================== SIMPLE DATABASE ====================
-
-class SimpleDatabase:
-    """Simple JSON database"""
-    
-    def __init__(self, db_file="roastify_data.json"):
-        self.db_file = db_file
-        self.data = self._load_data()
-    
-    def _load_data(self):
-        """Load data from JSON"""
-        try:
-            if os.path.exists(self.db_file):
-                with open(self.db_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except:
-            pass
-        
-        return {
-            "users": {},
-            "stats": {
-                "total_roasts": 0,
-                "total_users": 0,
-                "start_time": datetime.now().isoformat()
-            }
-        }
-    
-    def _save_data(self):
-        """Save data to JSON"""
-        try:
-            with open(self.db_file, 'w', encoding='utf-8') as f:
-                json.dump(self.data, f, indent=2, ensure_ascii=False)
-        except:
-            pass
-    
-    def get_user(self, user_id):
-        """Get user data"""
-        user_id_str = str(user_id)
-        if user_id_str not in self.data["users"]:
-            self.data["users"][user_id_str] = {
-                "user_id": user_id,
-                "roast_count": 0,
-                "vote_count": 0,
-                "created_at": datetime.now().isoformat(),
-                "last_active": datetime.now().isoformat()
-            }
-            self._save_data()
-        return self.data["users"][user_id_str]
-    
-    def increment_roast(self, user_id):
-        """Increment roast count"""
-        user = self.get_user(user_id)
-        user["roast_count"] += 1
-        user["last_active"] = datetime.now().isoformat()
-        self.data["stats"]["total_roasts"] += 1
-        self._save_data()
-        return user["roast_count"]
-    
-    def get_leaderboard(self, limit=10):
-        """Get leaderboard"""
-        users = list(self.data["users"].values())
-        users.sort(key=lambda x: x["roast_count"], reverse=True)
-        return users[:limit]
-    
-    def get_stats(self):
-        """Get bot stats"""
-        stats = self.data["stats"].copy()
-        stats["active_users"] = len(self.data["users"])
-        return stats
-
-# ==================== SIMPLE IMAGE GENERATOR ====================
-
-class SimpleImageGenerator:
-    """Simple image generator without external dependencies"""
+class AdvancedTemplateManager:
+    """Advanced template management with random designs"""
     
     def __init__(self):
-        self.width = Config.IMAGE_WIDTH
-        self.height = Config.IMAGE_HEIGHT
-        self.use_pil = self._check_pil()
-        logger.info(f"Image Generator: PIL = {self.use_pil}")
-    
-    def _check_pil(self):
-        """Check if PIL is available"""
-        try:
-            from PIL import Image, ImageDraw, ImageFont
-            return True
-        except ImportError:
-            return False
-    
-    def create_roast_image(self, primary_text, secondary_text="", user_id=None, style="default"):
-        """Create roast image"""
-        try:
-            if not self.use_pil:
-                return self._create_text_image(primary_text, secondary_text)
-            
-            from PIL import Image, ImageDraw, ImageFont
-            import textwrap
-            
-            # Create image
-            img = Image.new('RGB', (self.width, self.height), (25, 25, 35))
-            draw = ImageDraw.Draw(img)
-            
-            # Try to load font
-            try:
-                font_large = ImageFont.truetype("arial.ttf", 32)
-                font_medium = ImageFont.truetype("arial.ttf", 24)
-                font_small = ImageFont.truetype("arial.ttf", 18)
-            except:
-                font_large = ImageFont.load_default()
-                font_medium = ImageFont.load_default()
-                font_small = ImageFont.load_default()
-            
-            # Add top border
-            draw.rectangle([(0, 0), (self.width, 10)], fill=(255, 107, 53))
-            
-            # Add header
-            draw.text((20, 30), "🔥 Roastify Bot 🔥", font=font_large, fill=(255, 107, 53))
-            
-            # Add primary text
-            lines = textwrap.wrap(primary_text, width=30)
-            y_pos = 80
-            for line in lines[:3]:
-                draw.text((50, y_pos), line, font=font_medium, fill=(255, 255, 255))
-                y_pos += 40
-            
-            # Add secondary text
-            if secondary_text:
-                sec_lines = textwrap.wrap(secondary_text, width=40)
-                y_pos += 20
-                for line in sec_lines[:2]:
-                    draw.text((50, y_pos), line, font=font_medium, fill=(0, 180, 216))
-                    y_pos += 30
-            
-            # Add bottom border
-            draw.rectangle([(0, self.height-10), (self.width, self.height)], 
-                          fill=(255, 107, 53))
-            
-            # Add footer
-            if user_id:
-                draw.text((20, self.height-40), f"User: {user_id}", 
-                         font=font_small, fill=(150, 150, 150))
-            
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            draw.text((self.width-100, self.height-40), timestamp, 
-                     font=font_small, fill=(150, 150, 150))
-            
-            return img
-            
-        except Exception as e:
-            logger.error(f"Image creation error: {e}")
-            return None
-    
-    def _create_text_image(self, primary_text, secondary_text):
-        """Create text-only image"""
-        try:
-            from PIL import Image, ImageDraw
-            
-            img = Image.new('RGB', (500, 300), (25, 25, 35))
-            draw = ImageDraw.Draw(img)
-            
-            draw.text((50, 50), "ROASTIFY BOT", fill=(255, 107, 53))
-            draw.text((50, 100), primary_text[:100], fill=(255, 255, 255))
-            
-            if secondary_text:
-                draw.text((50, 150), secondary_text[:80], fill=(0, 180, 216))
-            
-            return img
-        except:
-            return None
-    
-    def image_to_bytes(self, image):
-        """Convert image to bytes"""
-        try:
-            if image is None:
-                return self._create_fallback_bytes()
-            
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            buffered.seek(0)
-            return buffered
-        except:
-            return BytesIO()
-    
-    def _create_fallback_bytes(self):
-        """Create fallback image bytes"""
-        try:
-            from PIL import Image, ImageDraw
-            
-            img = Image.new('RGB', (400, 200), (255, 107, 53))
-            draw = ImageDraw.Draw(img)
-            draw.text((100, 80), "🔥 Roastify Bot 🔥", fill=(255, 255, 255))
-            
-            buffered = BytesIO()
-            img.save(buffered, format="PNG")
-            buffered.seek(0)
-            return buffered
-        except:
-            return BytesIO()
-
-# ==================== ROAST ENGINE ====================
-
-class RoastEngine:
-    """Generate roasts"""
-    
-    def __init__(self):
-        self.roasts = self._load_roasts()
-        logger.info("Roast Engine initialized")
-    
-    def _load_roasts(self):
-        """Load roast templates"""
-        return {
-            "funny": [
-                "তোমার বুদ্ধির দাম এক টাকা, আর ডিসকাউন্ট দুই টাকা! 🤣",
-                "তুমি নিশ্চয় WiFi ছাড়া ইন্টারনেট চালাও! 😂",
-                "তোমার মত ব্যক্তিত্ব দেখলে Google Maps ও হারিয়ে যায়! 🗺️",
-                "তুমি যদি রেস্তোরাঁয় যাও, menu card তোমাকে পড়তে বলে! 📖",
-                "তোমার স্মার্টফোনও তোমার বুদ্ধি দেখে hang হয়ে যায়! 📱"
-            ],
-            "savage": [
-                "তোমার existence itself একটা roast! 🔥",
-                "তোমাকে দেখে my wifi disconnect হয়ে যায়! 📶",
-                "তুমি human error-এর definition! ⚠️",
-                "তোমার মত boring person দেখলে clock ও stop হয়ে যায়! ⏰",
-                "তুমি offline mode-এর advertisement! 📴"
-            ],
-            "general": [
-                "তুমি একটু বেশিই স্পেশাল! 😎",
-                "রোস্টিফাই বট সবসময় তোমার সাথে! 🤖",
-                "জীবনটা ছোট, রোস্ট লং! 😈",
-                "তোমার জন্য স্পেশাল রোস্ট! 😄",
-                "এক্সক্লুসিভ রোস্ট শুধু তোমার জন্য! 🎯"
-            ]
-        }
-    
-    def generate_roast(self, input_text="", user_name="User"):
-        """Generate a roast"""
-        try:
-            # Select random category
-            category = random.choice(["funny", "savage", "general"])
-            
-            # Get random roast
-            roast_text = random.choice(self.roasts[category])
-            
-            return {
-                "primary": roast_text,
-                "secondary": f"রোস্টিফাই বট | {user_name}",
-                "category": category,
-                "score": random.randint(1, 10)
-            }
-        except:
-            return {
-                "primary": "তোমার জন্য স্পেশাল রোস্ট! 😄",
-                "secondary": "রোস্টিফাই বট",
-                "category": "general",
-                "score": 5
-            }
-
-# ==================== HTML MESSAGE BUILDER ====================
-
-class HTMLMessageBuilder:
-    """Build HTML messages with borders"""
-    
-    def __init__(self):
-        self.colors = Config.HTML_COLORS
-        self.border_styles = Config.BORDER_STYLES
+        self.templates = self._load_templates()
+        self.user_history = {}
         
-        # Word variations
-        self.word_variations = {
-            "welcome": ["স্বাগতম", "Welcome", "হ্যালো", "Hi", "আসসালামু আলাইকুম"],
-            "help": ["সাহায্য", "Help", "গাইড", "নির্দেশিকা"],
-            "roast": ["রোস্ট", "Roast", "মজা", "কমেডি"],
-            "stats": ["পরিসংখ্যান", "Stats", "ডাটা", "তথ্য"],
-            "bot": ["বট", "Bot", "রোবট"],
-            "fun": ["মজা", "Fun", "এনজয়", "আনন্দ"],
-            "error": ["সমস্যা", "Error", "এরর", "বাধা"]
-        }
-    
-    def get_random_word(self, key):
-        """Get random word variation"""
-        return random.choice(self.word_variations.get(key, [key]))
-    
-    def get_random_border(self):
-        """Get random border style"""
-        style = random.choice(list(self.border_styles.keys()))
-        symbols = self.border_styles[style]
-        return {
-            "style": style,
-            "top": symbols["top"] * 20,
-            "bottom": symbols["bottom"] * 20
-        }
-    
-    def create_message(self, title="", content="", footer="", add_border=True):
-        """Create HTML message"""
-        # Get random variations
-        random_title = self.get_random_word(title.lower()) if title else ""
-        random_footer = self.get_random_word(footer.lower()) if footer else ""
-        
-        # Build HTML
-        html_parts = []
-        
-        if random_title:
-            html_parts.append(f'<b>{random_title.upper()}</b>\n')
-        
-        html_parts.append(f'{content}\n')
-        
-        if random_footer:
-            html_parts.append(f'<i>{random_footer}</i>')
-        
-        message = '\n'.join(html_parts)
-        
-        # Add border if requested
-        if add_border:
-            border = self.get_random_border()
-            message = f"{border['top']}\n{message}\n{border['bottom']}"
-        
-        return message
-    
-    def create_command_response(self, command, user_name="", data=None):
-        """Create command response"""
-        responses = {
-            "start": self._get_start_message(user_name),
-            "help": self._get_help_message(),
-            "stats": self._get_stats_message(data) if data else "স্ট্যাটস লোড হচ্ছে...",
-            "roast": self._get_roast_message(),
-            "ping": self._get_ping_message(),
-            "leaderboard": self._get_leaderboard_message(data) if data else "লিডারবোর্ড লোড হচ্ছে...",
-            "error": self._get_error_message()
+    def _load_templates(self):
+        """Load all templates from JSON files"""
+        templates = {
+            "modern": self._create_modern_template(),
+            "vintage": self._create_vintage_template(),
+            "cyberpunk": self._create_cyberpunk_template(),
+            "gradient": self._create_gradient_template(),
+            "minimal": self._create_minimal_template(),
+            "neon": self._create_neon_template(),
+            "elegant": self._create_elegant_template(),
+            "funky": self._create_funky_template(),
+            "dark": self._create_dark_template(),
+            "light": self._create_light_template()
         }
         
-        return responses.get(command, responses["error"])
-    
-    def _get_start_message(self, user_name):
-        """Start message"""
-        return self.create_message(
-            title="welcome",
-            content=(
-                f"👋 <b>{user_name}!</b>\n\n"
-                "🤖 <i>রোস্টিফাই বটে স্বাগতম!</i>\n\n"
-                "✨ <u>ব্যবহার পদ্ধতি:</u>\n"
-                "• যেকোনো মেসেজ লিখুন\n"
-                "• রোস্ট ইমেজ পাবেন\n"
-                "• ভোট দিন রেটিং দিতে\n\n"
-                "⚡ <u>কমান্ডস:</u>\n"
-                "/help - সাহায্য\n"
-                "/roast - রোস্ট পান\n"
-                "/stats - স্ট্যাটস\n"
-                "/leaderboard - লিডারবোর্ড\n\n"
-                "😈 <b>মজা শুরু করি?</b>"
-            ),
-            footer="bot",
-            add_border=True
-        )
-    
-    def _get_help_message(self):
-        """Help message"""
-        return self.create_message(
-            title="help",
-            content=(
-                "📚 <u>রোস্টিফাই বট হেল্প</u>\n\n"
-                "🎯 <b>বট সম্পর্কে:</b>\n"
-                "আমি একটি রোস্ট বট। আপনার মেসেজ পড়ে স্মার্ট রোস্ট তৈরি করি।\n\n"
-                "⚡ <b>দ্রুত শুরু:</b>\n"
-                "1. যেকোনো মেসেজ লিখুন\n"
-                "2. রোস্ট ইমেজ পাবেন\n"
-                "3. ভোট দিন রেটিং দিতে\n\n"
-                "🛠️ <b>কমান্ড লিস্ট:</b>\n"
-                "• /roast - রোস্ট পান\n"
-                "• /stats - আপনার স্ট্যাটস\n"
-                "• /leaderboard - টপ প্লেয়ার\n"
-                "• /ping - বট চেক করুন\n"
-                "• /help - এই মেসেজ\n\n"
-                "🔒 <b>নিরাপত্তা:</b>\n"
-                "• সবই মজার জন্য\n"
-                "• কোনো অপমান নয়\n"
-                "• সম্পূর্ণ বিনামূল্যে"
-            ),
-            footer="support",
-            add_border=True
-        )
-    
-    def _get_stats_message(self, data):
-        """Stats message"""
-        return self.create_message(
-            title="stats",
-            content=(
-                f"📊 <b>পরিসংখ্যান</b>\n\n"
-                f"• মোট রোস্ট: <code>{data.get('roast_count', 0)}</code>\n"
-                f"• মোট ভোট: <code>{data.get('vote_count', 0)}</code>\n"
-                f"• যোগদান: <code>{data.get('created_at', 'N/A')[:10]}</code>\n"
-                f"• শেষ সক্রিয়: <code>{data.get('last_active', 'N/A')[:19]}</code>\n\n"
-                f"🏆 র‍্যাংক: <code>#{data.get('rank', 'N/A')}</code>\n"
-                f"🔥 স্ট্যাটাস: <code>সক্রিয়</code>"
-            ),
-            footer="updated",
-            add_border=True
-        )
-    
-    def _get_roast_message(self):
-        """Roast command message"""
-        return self.create_message(
-            title="roast",
-            content="রোস্ট তৈরি হচ্ছে... 🔥\n\nএকটু অপেক্ষা করুন!",
-            footer="processing",
-            add_border=True
-        )
-    
-    def _get_ping_message(self):
-        """Ping message"""
-        return self.create_message(
-            title="ping",
-            content=(
-                "🏓 <b>পং!</b>\n\n"
-                "• বট স্ট্যাটাস: <code>সক্রিয় ✅</code>\n"
-                "• সময়: <code>{}</code>\n"
-                "• সংস্করণ: <code>3.0</code>"
-            ).format(datetime.now().strftime("%H:%M:%S")),
-            footer="status",
-            add_border=True
-        )
-    
-    def _get_leaderboard_message(self, data):
-        """Leaderboard message"""
-        if not data:
-            return "লিডারবোর্ড খালি!"
-        
-        leaderboard_text = "🏆 <b>টপ ১০ রোস্টার</b>\n\n"
-        
-        for i, user in enumerate(data[:10], 1):
-            name = user.get('user_id', 'Unknown')
-            score = user.get('roast_count', 0)
-            
-            if i == 1:
-                medal = "🥇"
-            elif i == 2:
-                medal = "🥈"
-            elif i == 3:
-                medal = "🥉"
-            else:
-                medal = f"{i}."
-            
-            leaderboard_text += f"{medal} User_{name} - <code>{score}</code> রোস্ট\n"
-        
-        leaderboard_text += f"\n📅 আপডেট: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        
-        return self.create_message(
-            title="leaderboard",
-            content=leaderboard_text,
-            footer="competition",
-            add_border=True
-        )
-    
-    def _get_error_message(self):
-        """Error message"""
-        return self.create_message(
-            title="error",
-            content="কিছু সমস্যা হয়েছে! দয়া করে আবার চেষ্টা করুন।",
-            footer="retry",
-            add_border=True
-        )
-
-# ==================== MAIN BOT CLASS ====================
-
-class RoastifyBot:
-    """Main bot class - No Errors"""
-    
-    def __init__(self):
-        """Initialize bot"""
-        try:
-            # Validate config
-            if not Config.validate():
-                logger.error("❌ Configuration validation failed!")
-                return
-            
-            # Initialize components
-            self.db = SimpleDatabase()
-            self.roast_engine = RoastEngine()
-            self.image_gen = SimpleImageGenerator()
-            self.html_builder = HTMLMessageBuilder()
-            
-            # Cooldown manager
-            self.cooldowns = {}
-            
-            # Statistics
-            self.stats = {
-                "start_time": datetime.now(),
-                "messages": 0,
-                "roasts": 0,
-                "errors": 0
-            }
-            
-            # Bot application
-            self.application = None
-            
-            logger.info("✅ Roastify Bot initialized successfully!")
-            
-        except Exception as e:
-            logger.error(f"❌ Bot initialization failed: {e}")
-    
-    def setup_application(self):
-        """Setup Telegram application"""
-        try:
-            self.application = (
-                ApplicationBuilder()
-                .token(Config.BOT_TOKEN)
-                .pool_timeout(30)
-                .build()
-            )
-            
-            # Register handlers
-            self._register_handlers()
-            
-            logger.info("✅ Application setup completed")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Application setup failed: {e}")
-            return False
-    
-    def _register_handlers(self):
-        """Register all handlers"""
-        # Command handlers
-        commands = [
-            ("start", self.handle_start),
-            ("help", self.handle_help),
-            ("roast", self.handle_roast),
-            ("stats", self.handle_stats),
-            ("leaderboard", self.handle_leaderboard),
-            ("ping", self.handle_ping),
-            ("info", self.handle_info),
-        ]
-        
-        for cmd, handler in commands:
-            self.application.add_handler(CommandHandler(cmd, handler))
-        
-        # Message handler
-        self.application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            self.handle_text_message
-        ))
-        
-        # Error handler
-        self.application.add_error_handler(self.handle_error)
-        
-        logger.info(f"✅ Registered {len(commands)} commands")
-    
-    async def set_bot_commands(self):
-        """Set bot commands"""
-        try:
-            commands = [
-                ("start", "বট শুরু করুন"),
-                ("help", "সাহায্য পান"),
-                ("roast", "রোস্ট পান"),
-                ("stats", "আপনার স্ট্যাটস"),
-                ("leaderboard", "লিডারবোর্ড দেখুন"),
-                ("ping", "বট চেক করুন"),
-            ]
-            
-            await self.application.bot.set_my_commands(commands)
-            logger.info("✅ Bot commands set")
-        except Exception as e:
-            logger.error(f"❌ Failed to set commands: {e}")
-    
-    # ==================== COMMAND HANDLERS ====================
-    
-    async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command"""
-        try:
-            user = update.effective_user
-            
-            # Register user
-            self.db.get_user(user.id)
-            
-            # Send welcome message
-            welcome_msg = self.html_builder.create_command_response("start", user.first_name)
-            
-            # Try to send image
-            try:
-                image = self.image_gen.create_roast_image(
-                    primary_text=f"স্বাগতম {user.first_name}!",
-                    secondary_text="রোস্টিফাই বটে আপনাকে স্বাগতম",
-                    user_id=user.id
-                )
-                
-                if image:
-                    image_bytes = self.image_gen.image_to_bytes(image)
-                    await context.bot.send_photo(
-                        chat_id=update.effective_chat.id,
-                        photo=image_bytes,
-                        caption=welcome_msg,
-                        parse_mode=ParseMode.HTML
-                    )
-                else:
-                    await update.message.reply_text(welcome_msg, parse_mode=ParseMode.HTML)
-            except:
-                await update.message.reply_text(welcome_msg, parse_mode=ParseMode.HTML)
-            
-            self.stats["messages"] += 1
-            logger.info(f"User {user.id} started bot")
-            
-        except Exception as e:
-            logger.error(f"Start error: {e}")
-            await self._send_error(update)
-    
-    async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help command"""
-        try:
-            help_msg = self.html_builder.create_command_response("help")
-            await update.message.reply_text(help_msg, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            logger.error(f"Help error: {e}")
-            await self._send_error(update)
-    
-    async def handle_roast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /roast command"""
-        try:
-            user = update.effective_user
-            chat = update.effective_chat
-            
-            # Check cooldown
-            if not self._check_cooldown(user.id, chat.id):
-                cooldown_msg = self.html_builder.create_message(
-                    title="cooldown",
-                    content="⏳ দয়া করে কিছুক্ষণ অপেক্ষা করুন!",
-                    footer="wait",
-                    add_border=True
-                )
-                await update.message.reply_text(cooldown_msg, parse_mode=ParseMode.HTML)
-                return
-            
-            # Generate roast
-            roast_data = self.roast_engine.generate_roast(user_name=user.first_name)
-            
-            # Send typing action
-            await context.bot.send_chat_action(
-                chat_id=chat.id,
-                action="upload_photo"
-            )
-            
-            # Create and send image
-            image = self.image_gen.create_roast_image(
-                primary_text=roast_data["primary"],
-                secondary_text=roast_data["secondary"],
-                user_id=user.id,
-                style=roast_data["category"]
-            )
-            
-            if image:
-                image_bytes = self.image_gen.image_to_bytes(image)
-                
-                # Send image with caption
-                caption = self.html_builder.create_message(
-                    title="roast",
-                    content=f"🔥 {roast_data['primary']}",
-                    footer=f"Score: {roast_data['score']}/10",
-                    add_border=True
-                )
-                
-                await context.bot.send_photo(
-                    chat_id=chat.id,
-                    photo=image_bytes,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                    reply_to_message_id=update.message.message_id
-                )
-            else:
-                # Fallback text
-                text_msg = self.html_builder.create_message(
-                    title="roast",
-                    content=f"🔥 {roast_data['primary']}\n\n{roast_data['secondary']}",
-                    footer="রোস্টিফাই বট",
-                    add_border=True
-                )
-                await update.message.reply_text(text_msg, parse_mode=ParseMode.HTML)
-            
-            # Update database
-            self.db.increment_roast(user.id)
-            self.stats["roasts"] += 1
-            self.stats["messages"] += 1
-            
-            logger.info(f"Roast sent to {user.id}")
-            
-        except Exception as e:
-            logger.error(f"Roast error: {e}")
-            await self._send_error(update)
-    
-    async def handle_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /stats command"""
-        try:
-            user = update.effective_user
-            user_data = self.db.get_user(user.id)
-            
-            # Calculate rank
-            leaderboard = self.db.get_leaderboard()
-            rank = 1
-            for i, u in enumerate(leaderboard, 1):
-                if u["user_id"] == user.id:
-                    rank = i
-                    break
-            
-            # Add rank to data
-            user_data["rank"] = rank
-            
-            stats_msg = self.html_builder.create_command_response("stats", data=user_data)
-            await update.message.reply_text(stats_msg, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            logger.error(f"Stats error: {e}")
-            await self._send_error(update)
-    
-    async def handle_leaderboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /leaderboard command"""
-        try:
-            leaderboard = self.db.get_leaderboard(10)
-            leaderboard_msg = self.html_builder.create_command_response("leaderboard", data=leaderboard)
-            await update.message.reply_text(leaderboard_msg, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            logger.error(f"Leaderboard error: {e}")
-            await self._send_error(update)
-    
-    async def handle_ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /ping command"""
-        try:
-            ping_msg = self.html_builder.create_command_response("ping")
-            await update.message.reply_text(ping_msg, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            logger.error(f"Ping error: {e}")
-            await self._send_error(update)
-    
-    async def handle_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /info command"""
-        try:
-            uptime = datetime.now() - self.stats["start_time"]
-            bot_stats = self.db.get_stats()
-            
-            info_text = (
-                f"🤖 <b>রোস্টিফাই বট - তথ্য</b>\n\n"
-                f"📊 <u>পরিসংখ্যান:</u>\n"
-                f"• মোট ইউজার: <code>{bot_stats['active_users']}</code>\n"
-                f"• মোট রোস্ট: <code>{bot_stats['total_roasts']}</code>\n"
-                f"• আপটাইম: <code>{str(uptime).split('.')[0]}</code>\n"
-                f"• এরর: <code>{self.stats['errors']}</code>\n\n"
-                f"⚙️ <u>প্রযুক্তি:</u>\n"
-                f"• Python Telegram Bot\n"
-                f"• HTML Formatting\n"
-                f"• JSON Database\n\n"
-                f"👑 <u>তথ্য:</u>\n"
-                f"• ওনার: <code>{Config.OWNER_ID}</code>\n"
-                f"• বট: @{Config.BOT_USERNAME}\n"
-                f"• সংস্করণ: 3.0"
-            )
-            
-            info_msg = self.html_builder.create_message(
-                title="info",
-                content=info_text,
-                footer="roastify",
-                add_border=True
-            )
-            
-            await update.message.reply_text(info_msg, parse_mode=ParseMode.HTML)
-            
-        except Exception as e:
-            logger.error(f"Info error: {e}")
-            await self._send_error(update)
-    
-    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle text messages"""
-        try:
-            user = update.effective_user
-            chat = update.effective_chat
-            text = update.message.text
-            
-            self.stats["messages"] += 1
-            
-            # Check for very short messages
-            if len(text) < Config.MIN_ROAST_LENGTH:
-                return
-            
-            # Check cooldown
-            if not self._check_cooldown(user.id, chat.id):
-                return
-            
-            # Generate roast based on text
-            roast_data = self.roast_engine.generate_roast(input_text=text, user_name=user.first_name)
-            
-            # Send typing action
-            await context.bot.send_chat_action(
-                chat_id=chat.id,
-                action="upload_photo"
-            )
-            
-            # Create and send image
-            image = self.image_gen.create_roast_image(
-                primary_text=roast_data["primary"],
-                secondary_text=roast_data["secondary"],
-                user_id=user.id,
-                style=roast_data["category"]
-            )
-            
-            if image:
-                image_bytes = self.image_gen.image_to_bytes(image)
-                
-                caption = self.html_builder.create_message(
-                    title="roast",
-                    content=f"🔥 {roast_data['primary']}",
-                    footer=f"{user.first_name}'র রোস্ট",
-                    add_border=True
-                )
-                
-                await context.bot.send_photo(
-                    chat_id=chat.id,
-                    photo=image_bytes,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                    reply_to_message_id=update.message.message_id
-                )
-            else:
-                # Fallback text
-                text_msg = self.html_builder.create_message(
-                    title="roast",
-                    content=f"🔥 {roast_data['primary']}",
-                    footer="রোস্টিফাই বট",
-                    add_border=True
-                )
-                await update.message.reply_text(text_msg, parse_mode=ParseMode.HTML)
-            
-            # Update database
-            self.db.increment_roast(user.id)
-            self.stats["roasts"] += 1
-            
-            logger.info(f"Auto roast for {user.id}")
-            
-        except Exception as e:
-            logger.error(f"Text message error: {e}")
-            self.stats["errors"] += 1
-    
-    def _check_cooldown(self, user_id, chat_id):
-        """Check user cooldown"""
-        key = f"{user_id}_{chat_id}"
-        current_time = time.time()
-        
-        if key in self.cooldowns:
-            last_time = self.cooldowns[key]
-            if current_time - last_time < Config.COOLDOWN_SECONDS:
-                return False
-        
-        self.cooldowns[key] = current_time
-        return True
-    
-    async def _send_error(self, update):
-        """Send error message"""
-        try:
-            error_msg = self.html_builder.create_command_response("error")
-            await update.message.reply_text(error_msg, parse_mode=ParseMode.HTML)
-        except:
-            pass
-    
-    async def handle_error(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle errors"""
-        try:
-            self.stats["errors"] += 1
-            
-            error_msg = str(context.error)[:200]
-            logger.error(f"Bot error: {error_msg}")
-            
-            # Notify owner
-            if Config.OWNER_ID:
+        # Load custom templates if available
+        templates_path = Path("assets/templates")
+        if templates_path.exists():
+            for template_file in templates_path.glob("*.json"):
                 try:
-                    await context.bot.send_message(
-                        chat_id=Config.OWNER_ID,
-                        text=f"⚠️ Bot Error:\n\n<code>{error_msg}</code>",
-                        parse_mode=ParseMode.HTML
-                    )
-                except:
-                    pass
-                    
-        except Exception as e:
-            logger.error(f"Error handler error: {e}")
-    
-    # ==================== BOT CONTROL ====================
-    
-    async def start_bot(self):
-        """Start the bot"""
-        try:
-            logger.info("🚀 Starting Roastify Bot...")
-            
-            if not self.setup_application():
-                raise Exception("Application setup failed")
-            
-            # Set commands
-            await self.set_bot_commands()
-            
-            # Get bot info
-            bot_info = await self.application.bot.get_me()
-            logger.info(f"🤖 Bot Info: @{bot_info.username} (ID: {bot_info.id})")
-            
-            # Start
-            await self.application.initialize()
-            await self.application.start()
-            await self.application.updater.start_polling()
-            
-            logger.info("✅ Bot started successfully!")
-            logger.info("📡 Listening for messages...")
-            
-            # Keep running
-            await self._keep_running()
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to start bot: {e}")
-            await self.stop_bot()
-    
-    async def _keep_running(self):
-        """Keep bot running"""
-        try:
-            while True:
-                await asyncio.sleep(1)
-                
-                # Log status every 5 minutes
-                if int(time.time()) % 300 == 0:
-                    logger.info(f"📊 Status: Msgs: {self.stats['messages']} | Roasts: {self.stats['roasts']} | Errors: {self.stats['errors']}")
-                    
-        except asyncio.CancelledError:
-            logger.info("Bot stopped")
-        except Exception as e:
-            logger.error(f"Keep running error: {e}")
-    
-    async def stop_bot(self):
-        """Stop the bot"""
-        try:
-            logger.info("🛑 Stopping bot...")
-            
-            if self.application:
-                await self.application.stop()
-                await self.application.shutdown()
-            
-            logger.info("✅ Bot stopped")
-            
-        except Exception as e:
-            logger.error(f"Stop error: {e}")
-
-def get_image_generator():
-    return image_generator
-# ==================== MAIN FUNCTION ====================
-
-async def main():
-    """Main function"""
-    try:
-        print("\n" + "="*60)
-        print("🤖 ROASTIFY BOT - FINAL VERSION")
-        print("="*60)
-        print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print("="*60 + "\n")
+                    with open(template_file, 'r', encoding='utf-8') as f:
+                        template_data = json.load(f)
+                        template_name = template_file.stem
+                        templates[template_name] = template_data
+                except Exception as e:
+                    logger.warning(f"Failed to load template {template_file}: {e}")
         
-        # Check token
-        if Config.BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-            print("❌ ERROR: Please set BOT_TOKEN in environment variables!")
-            print("❌ Or edit Config class in bot.py")
+        return templates
+    
+    def get_random_template(self, user_id: int = None):
+        """Get a random template for user"""
+        if user_id and user_id in self.user_history:
+            # Try to give a different template than last time
+            last_template = self.user_history[user_id]
+            available_templates = [t for t in self.templates.keys() if t != last_template]
+            if available_templates:
+                template_name = random.choice(available_templates)
+            else:
+                template_name = random.choice(list(self.templates.keys()))
+        else:
+            template_name = random.choice(list(self.templates.keys()))
+        
+        template = self.templates[template_name].copy()
+        
+        # Add some random variations
+        template = self._add_random_variations(template)
+        
+        if user_id:
+            self.user_history[user_id] = template_name
+        
+        return template
+    
+    def _add_random_variations(self, template: Dict) -> Dict:
+        """Add random variations to template"""
+        # Random color variations
+        if "colors" in template:
+            color_variations = [
+                {"primary": (255, 107, 53), "secondary": (0, 180, 216)},  # Original
+                {"primary": (239, 71, 111), "secondary": (6, 214, 160)},   # Pink/Teal
+                {"primary": (255, 209, 102), "secondary": (17, 138, 178)}, # Yellow/Blue
+                {"primary": (155, 93, 229), "secondary": (41, 171, 226)},  # Purple/Blue
+                {"primary": (255, 94, 87), "secondary": (255, 147, 39)},   # Red/Orange
+            ]
+            
+            variation = random.choice(color_variations)
+            template["primary_color"] = variation["primary"]
+            template["secondary_color"] = variation["secondary"]
+        
+        # Random effects
+        effects = ["shadow", "glow", "gradient_text", "outline", "blur_background"]
+        selected_effects = random.sample(effects, random.randint(1, 3))
+        template["effects"] = selected_effects
+        
+        # Random font size variations
+        if "font_size" in template:
+            template["font_size"] += random.randint(-5, 5)
+        
+        return template
+    
+    # ========== TEMPLATE CREATORS ==========
+    
+    def _create_modern_template(self):
+        return {
+            "name": "modern",
+            "background": "gradient",
+            "primary_color": (255, 107, 53),
+            "secondary_color": (0, 180, 216),
+            "font": "modern.ttf",
+            "font_size": 48,
+            "sub_font_size": 24,
+            "position": {"x": 300, "y": 200},
+            "sub_position": {"x": 300, "y": 300},
+            "effects": ["shadow", "gradient_text"],
+            "border_style": "rounded",
+            "border_color": (255, 255, 255, 50),
+            "blur_radius": 0
+        }
+    
+    def _create_vintage_template(self):
+        return {
+            "name": "vintage",
+            "background": "texture",
+            "primary_color": (139, 69, 19),
+            "secondary_color": (160, 82, 45),
+            "font": "serif.ttf",
+            "font_size": 42,
+            "sub_font_size": 22,
+            "position": {"x": 300, "y": 180},
+            "sub_position": {"x": 300, "y": 280},
+            "effects": ["texture_overlay", "vignette"],
+            "border_style": "ornate",
+            "border_color": (101, 67, 33, 100),
+            "blur_radius": 1
+        }
+    
+    def _create_cyberpunk_template(self):
+        return {
+            "name": "cyberpunk",
+            "background": "grid",
+            "primary_color": (0, 255, 255),
+            "secondary_color": (255, 0, 255),
+            "font": "tech.ttf",
+            "font_size": 52,
+            "sub_font_size": 26,
+            "position": {"x": 300, "y": 190},
+            "sub_position": {"x": 300, "y": 290},
+            "effects": ["glow", "scan_lines", "noise"],
+            "border_style": "neon",
+            "border_color": (0, 255, 255, 100),
+            "blur_radius": 0
+        }
+    
+    def _create_gradient_template(self):
+        return {
+            "name": "gradient",
+            "background": "gradient_rainbow",
+            "primary_color": (255, 255, 255),
+            "secondary_color": (200, 200, 200),
+            "font": "sans.ttf",
+            "font_size": 46,
+            "sub_font_size": 23,
+            "position": {"x": 300, "y": 195},
+            "sub_position": {"x": 300, "y": 295},
+            "effects": ["gradient_text", "shadow"],
+            "border_style": "simple",
+            "border_color": (255, 255, 255, 30),
+            "blur_radius": 0
+        }
+    
+    def _create_minimal_template(self):
+        return {
+            "name": "minimal",
+            "background": "solid",
+            "primary_color": (0, 0, 0),
+            "secondary_color": (100, 100, 100),
+            "font": "sans.ttf",
+            "font_size": 44,
+            "sub_font_size": 22,
+            "position": {"x": 300, "y": 185},
+            "sub_position": {"x": 300, "y": 285},
+            "effects": [],
+            "border_style": "none",
+            "border_color": (0, 0, 0, 0),
+            "blur_radius": 0
+        }
+    
+    def _create_neon_template(self):
+        return {
+            "name": "neon",
+            "background": "dark",
+            "primary_color": (255, 20, 147),
+            "secondary_color": (0, 191, 255),
+            "font": "bold.ttf",
+            "font_size": 50,
+            "sub_font_size": 25,
+            "position": {"x": 300, "y": 200},
+            "sub_position": {"x": 300, "y": 300},
+            "effects": ["neon_glow", "reflection"],
+            "border_style": "glowing",
+            "border_color": (255, 20, 147, 80),
+            "blur_radius": 2
+        }
+    
+    def _create_elegant_template(self):
+        return {
+            "name": "elegant",
+            "background": "marble",
+            "primary_color": (75, 0, 130),
+            "secondary_color": (138, 43, 226),
+            "font": "elegant.ttf",
+            "font_size": 45,
+            "sub_font_size": 22,
+            "position": {"x": 300, "y": 190},
+            "sub_position": {"x": 300, "y": 290},
+            "effects": ["emboss", "gold_border"],
+            "border_style": "decorative",
+            "border_color": (255, 215, 0, 100),
+            "blur_radius": 1
+        }
+    
+    def _create_funky_template(self):
+        return {
+            "name": "funky",
+            "background": "pattern",
+            "primary_color": (255, 165, 0),
+            "secondary_color": (0, 128, 0),
+            "font": "funky.ttf",
+            "font_size": 47,
+            "sub_font_size": 24,
+            "position": {"x": 300, "y": 195},
+            "sub_position": {"x": 300, "y": 295},
+            "effects": ["dotted", "wavy"],
+            "border_style": "dashed",
+            "border_color": (255, 69, 0, 100),
+            "blur_radius": 0
+        }
+    
+    def _create_dark_template(self):
+        return {
+            "name": "dark",
+            "background": "black",
+            "primary_color": (255, 255, 255),
+            "secondary_color": (150, 150, 150),
+            "font": "sans.ttf",
+            "font_size": 46,
+            "sub_font_size": 23,
+            "position": {"x": 300, "y": 195},
+            "sub_position": {"x": 300, "y": 295},
+            "effects": ["shadow", "gradient"],
+            "border_style": "thin",
+            "border_color": (50, 50, 50, 100),
+            "blur_radius": 0
+        }
+    
+    def _create_light_template(self):
+        return {
+            "name": "light",
+            "background": "white",
+            "primary_color": (0, 0, 0),
+            "secondary_color": (50, 50, 50),
+            "font": "clean.ttf",
+            "font_size": 44,
+            "sub_font_size": 22,
+            "position": {"x": 300, "y": 190},
+            "sub_position": {"x": 300, "y": 290},
+            "effects": ["soft_shadow", "highlight"],
+            "border_style": "simple",
+            "border_color": (200, 200, 200, 100),
+            "blur_radius": 0
+        }
+
+# ==================== ADVANCED IMAGE GENERATOR ====================
+
+class AdvancedImageGenerator:
+    """Advanced image generator with multiple templates and effects"""
+    
+    def __init__(self):
+        if not PIL_AVAILABLE:
+            logger.error("PIL/Pillow not installed! Please install: pip install pillow")
+            self.available = False
             return
         
-        # Create and run bot
-        bot = RoastifyBot()
-        await bot.start_bot()
+        self.available = True
+        self.width = Config.IMAGE_WIDTH
+        self.height = Config.IMAGE_HEIGHT
         
-    except KeyboardInterrupt:
-        print("\n\n⚠️ Bot stopped by user")
-    except Exception as e:
-        print(f"\n❌ Fatal error: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        print("\n👋 Goodbye!")
-        print("="*60)
+        # Initialize managers
+        self.template_manager = AdvancedTemplateManager()
+        
+        # Setup directories
+        self._setup_directories()
+        
+        # Load assets
+        self._load_assets()
+        
+        logger.info("✅ Advanced Image Generator initialized")
+    
+    def _setup_directories(self):
+        """Create necessary directories"""
+        directories = [
+            "assets",
+            "assets/fonts",
+            "assets/backgrounds",
+            "assets/templates",
+            "generated",
+            "temp"
+        ]
+        
+        for directory in directories:
+            Path(directory).mkdir(exist_ok=True)
+    
+    def _load_assets(self):
+        """Load fonts and backgrounds"""
+        # Fonts
+        self.fonts = {}
+        fonts_dir = Path("assets/fonts")
+        if fonts_dir.exists():
+            for font_file in fonts_dir.glob("*.ttf"):
+                try:
+                    font_name = font_file.stem
+                    self.fonts[font_name] = str(font_file)
+                except:
+                    continue
+        
+        # Backgrounds
+        self.backgrounds = {}
+        bg_dir = Path("assets/backgrounds")
+        if bg_dir.exists():
+            for bg_file in bg_dir.glob("*.png"):
+                try:
+                    bg_name = bg_file.stem
+                    self.backgrounds[bg_name] = str(bg_file)
+                except:
+                    continue
+    
+    def create_roast_image(self, primary_text: str, secondary_text: str = "", 
+                          user_id: int = None, category: str = "funny") -> Image.Image:
+        """
+        Create a roast image with random template
+        Returns PIL Image object
+        """
+        if not self.available:
+            return self._create_fallback_image(primary_text, secondary_text)
+        
+        try:
+            # Get random template
+            template = self.template_manager.get_random_template(user_id)
+            
+            # Create base image
+            image = self._create_background(template)
+            
+            # Apply background effects
+            image = self._apply_background_effects(image, template)
+            
+            # Add text
+            image = self._add_text(image, primary_text, secondary_text, template)
+            
+            # Add decorative elements
+            image = self._add_decorations(image, template, category)
+            
+            # Final effects
+            image = self._apply_final_effects(image, template)
+            
+            return image
+            
+        except Exception as e:
+            logger.error(f"Error creating roast image: {e}")
+            return self._create_error_image(primary_text)
+    
+    def _create_background(self, template: Dict) -> Image.Image:
+        """Create background based on template"""
+        bg_type = template.get("background", "gradient")
+        
+        # Check if custom background exists
+        if bg_type in self.backgrounds:
+            try:
+                bg_image = Image.open(self.backgrounds[bg_type]).convert("RGBA")
+                bg_image = bg_image.resize((self.width, self.height))
+                return bg_image
+            except:
+                pass
+        
+        # Create background based on type
+        if bg_type == "gradient":
+            return self._create_gradient_background(template)
+        elif bg_type == "gradient_rainbow":
+            return self._create_rainbow_gradient()
+        elif bg_type == "grid":
+            return self._create_grid_background()
+        elif bg_type == "texture":
+            return self._create_texture_background()
+        elif bg_type == "pattern":
+            return self._create_pattern_background()
+        elif bg_type == "dark":
+            return Image.new('RGBA', (self.width, self.height), (20, 20, 30, 255))
+        elif bg_type == "light":
+            return Image.new('RGBA', (self.width, self.height), (240, 240, 245, 255))
+        elif bg_type == "solid":
+            color = template.get("primary_color", (25, 25, 35))
+            return Image.new('RGBA', (self.width, self.height), color + (255,))
+        else:
+            # Default gradient
+            return self._create_gradient_background(template)
+    
+    def _create_gradient_background(self, template: Dict) -> Image.Image:
+        """Create gradient background"""
+        image = Image.new('RGBA', (self.width, self.height))
+        draw = ImageDraw.Draw(image)
+        
+        # Get colors from template or generate random
+        color1 = template.get("primary_color", (random.randint(0, 100), 
+                                                random.randint(0, 100), 
+                                                random.randint(100, 200)))
+        color2 = template.get("secondary_color", (random.randint(100, 200), 
+                                                  random.randint(100, 200), 
+                                                  random.randint(0, 100)))
+        
+        # Create vertical gradient
+        for y in range(self.height):
+            ratio = y / self.height
+            r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
+            g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+            b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+            draw.line([(0, y), (self.width, y)], fill=(r, g, b, 255))
+        
+        return image
+    
+    def _create_rainbow_gradient(self) -> Image.Image:
+        """Create rainbow gradient background"""
+        image = Image.new('RGBA', (self.width, self.height))
+        draw = ImageDraw.Draw(image)
+        
+        colors = [
+            (255, 0, 0),    # Red
+            (255, 127, 0),  # Orange
+            (255, 255, 0),  # Yellow
+            (0, 255, 0),    # Green
+            (0, 0, 255),    # Blue
+            (75, 0, 130),   # Indigo
+            (148, 0, 211)   # Violet
+        ]
+        
+        segment_height = self.height // len(colors)
+        
+        for i, color in enumerate(colors):
+            y_start = i * segment_height
+            y_end = (i + 1) * segment_height if i < len(colors) - 1 else self.height
+            
+            # Create gradient within segment
+            for y in range(y_start, y_end):
+                ratio = (y - y_start) / (y_end - y_start)
+                next_color = colors[(i + 1) % len(colors)] if i < len(colors) - 1 else colors[0]
+                
+                r = int(color[0] * (1 - ratio) + next_color[0] * ratio)
+                g = int(color[1] * (1 - ratio) + next_color[1] * ratio)
+                b = int(color[2] * (1 - ratio) + next_color[2] * ratio)
+                
+                draw.line([(0, y), (self.width, y)], fill=(r, g, b, 255))
+        
+        return image
+    
+    def _create_grid_background(self) -> Image.Image:
+        """Create grid background"""
+        image = Image.new('RGBA', (self.width, self.height), (10, 10, 20, 255))
+        draw = ImageDraw.Draw(image)
+        
+        # Draw grid lines
+        grid_size = 40
+        line_color = (30, 30, 50, 150)
+        
+        for x in range(0, self.width, grid_size):
+            draw.line([(x, 0), (x, self.height)], fill=line_color, width=1)
+        
+        for y in range(0, self.height, grid_size):
+            draw.line([(0, y), (self.width, y)], fill=line_color, width=1)
+        
+        # Add glow points
+        for _ in range(20):
+            x = random.randint(0, self.width)
+            y = random.randint(0, self.height)
+            radius = random.randint(2, 5)
+            color = (random.randint(0, 255), random.randint(0, 255), 255, 150)
+            draw.ellipse([(x-radius, y-radius), (x+radius, y+radius)], fill=color)
+        
+        return image
+    
+    def _create_texture_background(self) -> Image.Image:
+        """Create textured background"""
+        image = Image.new('RGBA', (self.width, self.height), (139, 69, 19, 255))
+        draw = ImageDraw.Draw(image)
+        
+        # Add noise for texture
+        for _ in range(5000):
+            x = random.randint(0, self.width)
+            y = random.randint(0, self.height)
+            darkness = random.randint(0, 50)
+            draw.point((x, y), fill=(139 - darkness, 69 - darkness//2, 19 - darkness//3, 255))
+        
+        return image
+    
+    def _create_pattern_background(self) -> Image.Image:
+        """Create patterned background"""
+        image = Image.new('RGBA', (self.width, self.height), (255, 245, 230, 255))
+        draw = ImageDraw.Draw(image)
+        
+        # Draw circles pattern
+        pattern_size = 80
+        colors = [(255, 200, 200, 100), (200, 255, 200, 100), (200, 200, 255, 100)]
+        
+        for x in range(0, self.width + pattern_size, pattern_size):
+            for y in range(0, self.height + pattern_size, pattern_size):
+                offset_x = (y // pattern_size) % 2 * pattern_size // 2
+                center_x = x + offset_x
+                center_y = y
+                
+                color = random.choice(colors)
+                radius = pattern_size // 4
+                
+                draw.ellipse([(center_x - radius, center_y - radius),
+                            (center_x + radius, center_y + radius)], 
+                           fill=color)
+        
+        return image
+    
+    def _apply_background_effects(self, image: Image.Image, template: Dict) -> Image.Image:
+        """Apply background effects"""
+        effects = template.get("effects", [])
+        
+        for effect in effects:
+            if effect == "blur_background" and template.get("blur_radius", 0) > 0:
+                image = image.filter(ImageFilter.GaussianBlur(template["blur_radius"]))
+            elif effect == "vignette":
+                image = self._add_vignette(image)
+            elif effect == "noise":
+                image = self._add_noise(image, intensity=3)
+            elif effect == "scan_lines":
+                image = self._add_scan_lines(image)
+            elif effect == "texture_overlay":
+                image = self._add_texture_overlay(image)
+        
+        return image
+    
+    def _add_text(self, image: Image.Image, primary_text: str, secondary_text: str, 
+                 template: Dict) -> Image.Image:
+        """Add text to image with effects"""
+        draw = ImageDraw.Draw(image)
+        
+        # Get font
+        font_name = template.get("font", "sans.ttf")
+        font_size = template.get("font_size", 48)
+        font = self._get_font(font_name, font_size)
+        
+        # Split text
+        primary_lines = Helpers.split_text_for_image(primary_text, 25)
+        secondary_lines = Helpers.split_text_for_image(secondary_text, 35) if secondary_text else []
+        
+        # Get positions
+        primary_pos = template.get("position", {"x": self.width//2, "y": self.height//2 - 50})
+        secondary_pos = template.get("sub_position", {"x": self.width//2, "y": self.height//2 + 50})
+        
+        # Draw primary text
+        primary_color = template.get("primary_color", (255, 255, 255))
+        self._draw_text_with_effects(draw, primary_lines, font, primary_pos, 
+                                    primary_color, template, is_primary=True)
+        
+        # Draw secondary text
+        if secondary_lines:
+            sub_font_size = template.get("sub_font_size", font_size // 2)
+            sub_font = self._get_font(font_name, sub_font_size)
+            secondary_color = template.get("secondary_color", (200, 200, 200))
+            self._draw_text_with_effects(draw, secondary_lines, sub_font, secondary_pos,
+                                        secondary_color, template, is_primary=False)
+        
+        return image
+    
+    def _get_font(self, font_name: str, size: int) -> ImageFont.FreeTypeFont:
+        """Get font with fallback"""
+        # Try to load from assets
+        if font_name in self.fonts:
+            try:
+                return ImageFont.truetype(self.fonts[font_name], size)
+            except:
+                pass
+        
+        # Try system fonts
+        font_paths = [
+            font_name,
+            f"fonts/{font_name}",
+            f"assets/fonts/{font_name}",
+        ]
+        
+        for path in font_paths:
+            try:
+                if Path(path).exists():
+                    return ImageFont.truetype(path, size)
+            except:
+                continue
+        
+        # Fallback to default
+        try:
+            return ImageFont.truetype("arial.ttf", size)
+        except:
+            return ImageFont.load_default(size)
+    
+    def _draw_text_with_effects(self, draw: ImageDraw, lines: List[str], font: ImageFont.FreeTypeFont,
+                               position: Dict, color: Tuple, template: Dict, is_primary: bool = True):
+        """Draw text with various effects"""
+        effects = template.get("effects", [])
+        
+        # Calculate text block dimensions
+        line_height = font.size + 10
+        total_height = len(lines) * line_height
+        start_y = position["y"] - (total_height // 2)
+        
+        for i, line in enumerate(lines):
+            y_pos = start_y + (i * line_height)
+            
+            # Get text dimensions
+            bbox = draw.textbbox((0, 0), line, font=font)
+            text_width = bbox[2] - bbox[0]
+            x_pos = position["x"] - (text_width // 2)
+            
+            # Apply effects
+            if "shadow" in effects and is_primary:
+                shadow_color = (0, 0, 0, 150)
+                shadow_offset = 5
+                draw.text((x_pos + shadow_offset, y_pos + shadow_offset), 
+                         line, font=font, fill=shadow_color)
+            
+            if "outline" in effects and is_primary:
+                outline_size = 2
+                outline_color = (0, 0, 0, 200)
+                for dx in range(-outline_size, outline_size + 1):
+                    for dy in range(-outline_size, outline_size + 1):
+                        if dx != 0 or dy != 0:
+                            draw.text((x_pos + dx, y_pos + dy), 
+                                     line, font=font, fill=outline_color)
+            
+            if "glow" in effects and is_primary:
+                glow_color = (color[0], color[1], color[2], 100)
+                glow_size = 3
+                for dx in range(-glow_size, glow_size + 1):
+                    for dy in range(-glow_size, glow_size + 1):
+                        dist = math.sqrt(dx*dx + dy*dy)
+                        if dist <= glow_size:
+                            alpha = int(100 * (1 - dist/glow_size))
+                            glow_color = (color[0], color[1], color[2], alpha)
+                            draw.text((x_pos + dx, y_pos + dy), 
+                                     line, font=font, fill=glow_color)
+            
+            if "gradient_text" in effects and is_primary:
+                # Create gradient text
+                for j, char in enumerate(line):
+                    char_bbox = draw.textbbox((0, 0), char, font=font)
+                    char_width = char_bbox[2] - char_bbox[0]
+                    
+                    # Calculate gradient color
+                    ratio = j / max(len(line) - 1, 1)
+                    r = int(color[0] * (1 - ratio) + random.randint(0, 255) * ratio)
+                    g = int(color[1] * (1 - ratio) + random.randint(0, 255) * ratio)
+                    b = int(color[2] * (1 - ratio) + random.randint(0, 255) * ratio)
+                    
+                    draw.text((x_pos + sum([draw.textbbox((0, 0), line[k], font=font)[2] - 
+                                           draw.textbbox((0, 0), line[k], font=font)[0] 
+                                           for k in range(j)]), y_pos), 
+                             char, font=font, fill=(r, g, b))
+            else:
+                # Draw normal text
+                draw.text((x_pos, y_pos), line, font=font, fill=color)
+    
+    def _add_decorations(self, image: Image.Image, template: Dict, category: str) -> Image.Image:
+        """Add decorative elements"""
+        draw = ImageDraw.Draw(image)
+        
+        border_style = template.get("border_style", "none")
+        border_color = template.get("border_color", (255, 255, 255, 100))
+        
+        if border_style == "rounded":
+            # Draw rounded rectangle border
+            border_width = 20
+            draw.rounded_rectangle(
+                [(border_width, border_width), 
+                 (self.width - border_width, self.height - border_width)],
+                radius=30,
+                outline=border_color,
+                width=3
+            )
+        elif border_style == "neon":
+            # Draw neon border
+            border_width = 10
+            for i in range(3):
+                alpha = 255 - i * 80
+                neon_color = border_color[:3] + (alpha,)
+                draw.rectangle(
+                    [(border_width + i, border_width + i), 
+                     (self.width - border_width - i, self.height - border_width - i)],
+                    outline=neon_color,
+                    width=1
+                )
+        elif border_style == "decorative":
+            # Add corner decorations
+            corner_size = 40
+            for corner in [(0, 0), (self.width - corner_size, 0),
+                          (0, self.height - corner_size), 
+                          (self.width - corner_size, self.height - corner_size)]:
+                x, y = corner
+                # Draw fancy corner
+                draw.line([(x + 10, y), (x + corner_size, y)], fill=border_color, width=3)
+                draw.line([(x, y + 10), (x, y + corner_size)], fill=border_color, width=3)
+        
+        # Add category icon
+        icons = {
+            "funny": "😂",
+            "savage": "🔥",
+            "general": "💎"
+        }
+        
+        if category in icons:
+            # We'll add emoji as text
+            emoji_font = self._get_font("arial.ttf", 60)
+            emoji = icons[category]
+            bbox = draw.textbbox((0, 0), emoji, font=emoji_font)
+            text_width = bbox[2] - bbox[0]
+            
+            draw.text((self.width - text_width - 20, 20), 
+                     emoji, font=emoji_font, fill=border_color)
+        
+        return image
+    
+    def _apply_final_effects(self, image: Image.Image, template: Dict) -> Image.Image:
+        """Apply final effects to image"""
+        effects = template.get("effects", [])
+        
+        if "emboss" in effects:
+            image = image.filter(ImageFilter.EMBOSS)
+        
+        if "sharpen" in effects:
+            image = image.filter(ImageFilter.SHARPEN)
+        
+        if "smooth" in effects:
+            image = image.filter(ImageFilter.SMOOTH)
+        
+        # Adjust brightness/contrast
+        if "highlight" in effects:
+            enhancer = ImageEnhance.Brightness(image)
+            image = enhancer.enhance(1.1)
+            
+            enhancer = ImageEnhance.Contrast(image)
+            image = enhancer.enhance(1.1)
+        
+        return image
+    
+    def _add_vignette(self, image: Image.Image) -> Image.Image:
+        """Add vignette effect"""
+        width, height = image.size
+        
+        # Create vignette mask
+        mask = Image.new('L', (width, height), 0)
+        draw = ImageDraw.Draw(mask)
+        
+        # Draw white ellipse
+        ellipse_bbox = [(-width//2, -height//2), (width*3//2, height*3//2)]
+        draw.ellipse(ellipse_bbox, fill=255)
+        
+        # Apply Gaussian blur
+        mask = mask.filter(ImageFilter.GaussianBlur(width//4))
+        
+        # Create vignette overlay
+        vignette = Image.new('RGBA', (width, height), (0, 0, 0, 150))
+        
+        # Composite with original
+        result = Image.composite(image, vignette, mask)
+        return result
+    
+    def _add_noise(self, image: Image.Image, intensity: int = 5) -> Image.Image:
+        """Add noise/grain effect"""
+        noise = Image.new('RGBA', image.size)
+        pixels = noise.load()
+        
+        for x in range(image.width):
+            for y in range(image.height):
+                if random.random() < 0.1:  # 10% pixels have noise
+                    gray = random.randint(0, intensity)
+                    alpha = random.randint(50, 150)
+                    pixels[x, y] = (gray, gray, gray, alpha)
+        
+        return Image.alpha_composite(image, noise)
+    
+    def _add_scan_lines(self, image: Image.Image) -> Image.Image:
+        """Add scan lines effect"""
+        draw = ImageDraw.Draw(image)
+        
+        # Draw horizontal lines
+        for y in range(0, image.height, 4):
+            draw.line([(0, y), (image.width, y)], fill=(0, 255, 0, 30), width=1)
+        
+        return image
+    
+    def _add_texture_overlay(self, image: Image.Image) -> Image.Image:
+        """Add texture overlay"""
+        # Create a simple texture pattern
+        texture = Image.new('RGBA', image.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(texture)
+        
+        # Add random dots
+        for _ in range(1000):
+            x = random.randint(0, image.width)
+            y = random.randint(0, image.height)
+            radius = random.randint(1, 3)
+            alpha = random.randint(10, 50)
+            draw.ellipse([(x-radius, y-radius), (x+radius, y+radius)], 
+                        fill=(139, 69, 19, alpha))
+        
+        return Image.alpha_composite(image, texture)
+    
+    def image_to_bytes(self, image: Image.Image) -> BytesIO:
+        """Convert PIL image to bytes"""
+        buffered = BytesIO()
+        image.save(buffered, format="PNG", optimize=True, quality=95)
+        buffered.seek(0)
+        return buffered
+    
+    def _create_fallback_image(self, primary_text: str, secondary_text: str = "") -> Image.Image:
+        """Create simple fallback image when PIL is not available"""
+        image = Image.new('RGB', (self.width, self.height), (25, 25, 35))
+        draw = ImageDraw.Draw(image)
+        
+        draw.text((50, 50), "ROASTIFY BOT", fill=(255, 107, 53))
+        draw.text((50, 100), primary_text[:100], fill=(255, 255, 255))
+        
+        if secondary_text:
+            draw.text((50, 150), secondary_text[:80], fill=(0, 180, 216))
+        
+        return image
+    
+    def _create_error_image(self, text: str) -> Image.Image:
+        """Create error image"""
+        image = Image.new('RGB', (self.width, self.height), (50, 0, 0))
+        draw = ImageDraw.Draw(image)
+        
+        draw.text((50, 100), "Error creating image", fill=(255, 100, 100))
+        draw.text((50, 150), text[:100], fill=(255, 255, 255))
+        
+        return image
+
+# ==================== SIMPLE HELPER FUNCTIONS ====================
+
+class SimpleHelpers:
+    """Simple helper functions"""
+    
+    @staticmethod
+    def split_text_for_image(text: str, max_length: int) -> List[str]:
+        """Split text into lines for image"""
+        words = text.split()
+        lines = []
+        current_line = []
+        
+        for word in words:
+            if len(' '.join(current_line + [word])) <= max_length:
+                current_line.append(word)
+            else:
+                if current_line:
+                    lines.append(' '.join(current_line))
+                current_line = [word]
+        
+        if current_line:
+            lines.append(' '.join(current_line))
+        
+        return lines if lines else [text[:max_length]]
+    
+    @staticmethod
+    def get_time_based_theme() -> Dict:
+        """Get theme based on time of day"""
+        hour = datetime.now().hour
+        
+        if 6 <= hour < 18:
+            return {"theme": "day", "brightness": 1.0}
+        else:
+            return {"theme": "night", "brightness": 0.7}
+
+# ==================== EXPORT ====================
+
+# Create instances
+if 'Helpers' not in globals():
+    Helpers = SimpleHelpers
+
+# Create the main image generator
+image_generator = AdvancedImageGenerator()
+
+def get_image_generator():
+    """Get the image generator instance"""
+    return image_generator
+
+# ==================== TEST FUNCTION ====================
+
+def test_image_generator():
+    """Test the image generator"""
+    if not image_generator.available:
+        print("❌ PIL not installed. Install with: pip install pillow")
+        return
+    
+    print("🎨 Testing Image Generator...")
+    
+    # Create test image
+    test_image = image_generator.create_roast_image(
+        primary_text="এটি একটি টেস্ট রোস্ট মেসেজ!",
+        secondary_text="রোস্টিফাই বট | টেস্ট ইউজার",
+        user_id=123456,
+        category="funny"
+    )
+    
+    if test_image:
+        # Save test image
+        test_image.save("test_output.png", "PNG")
+        print("✅ Test image saved as 'test_output.png'")
+        
+        # Show image info
+        print(f"📏 Image size: {test_image.size}")
+        print(f"🎨 Image mode: {test_image.mode}")
+        
+        return True
+    else:
+        print("❌ Failed to create test image")
+        return False
 
 if __name__ == "__main__":
-    # Run the bot
-    asyncio.run(main())
+    test_image_generator()
