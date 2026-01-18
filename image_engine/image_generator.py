@@ -1,31 +1,35 @@
+#!/usr/bin/env python3
 """
-Professional Image Generator for Roastify Bot
-Fully Fixed & Upgraded Version
-Termux Compatible - No PIL Font Issues
-Added Fallback Systems & Error Handling
+Advanced Image Generator for Roastify Bot
+HTML Compatible | Border System | Professional
+Termux Optimized - No PIL Font Issues
 """
 
 import os
 import random
 import base64
 import textwrap
-import sys
+import hashlib
 from io import BytesIO
 from typing import Dict, List, Tuple, Optional, Union, Any
 from pathlib import Path
 from datetime import datetime
 
-# Check if config exists
+# Fallback imports
 try:
     from config import Config
 except ImportError:
-    # Fallback config
     class Config:
         IMAGE_WIDTH = 600
-        IMAGE_HEIGHT = 400
+        IMAGE_HEIGHT = 450
         FONTS_PATH = "fonts"
+        BORDER_STYLES = {
+            "fire": "🔥", "star": "✦", "heart": "❤️", "diamond": "💎",
+            "arrow": "➤", "wave": "〰️", "music": "♪", "sparkle": "✨",
+            "zap": "⚡", "crown": "👑", "smile": "😊", "ghost": "👻",
+            "rocket": "🚀"
+        }
 
-# Fallback logger if not available
 try:
     from utils.logger import logger, log_error, log_info
 except ImportError:
@@ -39,328 +43,239 @@ except ImportError:
     def log_info(msg):
         logger.info(f"✅ {msg}")
 
-# Fallback TimeManager
-try:
-    from utils.time_manager import TimeManager
-except ImportError:
-    class TimeManager:
-        @staticmethod
-        def is_day_time():
-            from datetime import datetime
-            hour = datetime.now().hour
-            return 6 <= hour < 18
-        
-        @staticmethod
-        def get_current_time():
-            return datetime.now()
-
-
-class ImageGenerator:
-    """প্রফেশনাল ইমেজ জেনারেটর - উন্নত ভার্সন"""
+class AdvancedImageGenerator:
+    """এডভান্সড ইমেজ জেনারেটর - HTML & Border Compatible"""
     
     def __init__(self):
-        self.width = min(getattr(Config, 'IMAGE_WIDTH', 600), 800)  # Max 800 for Termux
-        self.height = min(getattr(Config, 'IMAGE_HEIGHT', 400), 800)
+        self.width = min(Config.IMAGE_WIDTH, 800)
+        self.height = min(Config.IMAGE_HEIGHT, 800)
         self.use_pil = self._check_pil_availability()
         self.font_available = False
-        self.default_fonts = {}
+        self.border_styles = Config.BORDER_STYLES
         
         if self.use_pil:
             self._setup_fonts()
         
         self.templates = self._load_templates()
-        self.emoji_fallback = ["🔥", "😎", "🤣", "💀", "👑", "🎯", "⚡", "✨", "🎭", "🃏"]
+        self.colors = self._load_color_palettes()
         
-        logger.info(f"✅ ImageGenerator v2.0 initialized (PIL: {self.use_pil}, Fonts: {self.font_available})")
+        logger.info(f"✅ ImageGenerator v3.0 initialized (PIL: {self.use_pil})")
     
     def _check_pil_availability(self) -> bool:
-        """PIL উপলব্ধ কিনা চেক করে - উন্নত চেকিং"""
+        """PIL উপলব্ধ কিনা চেক করে"""
         try:
-            # Try to import PIL
             import importlib.util
-            
-            # Check for PIL/Pillow
             pil_spec = importlib.util.find_spec("PIL")
             if pil_spec is None:
-                logger.warning("PIL/Pillow not found in system")
+                logger.warning("PIL not found")
                 return False
             
-            # Try actual import
-            from PIL import Image, ImageDraw, ImageFont
+            from PIL import Image
             return True
             
         except Exception as e:
-            logger.warning(f"PIL unavailable: {e}")
+            logger.warning(f"PIL check failed: {e}")
             return False
     
     def _setup_fonts(self):
-        """ফন্ট সেটআপ করে - উন্নত পদ্ধতি"""
+        """ফন্ট সেটআপ করে - টার্মাক্স কম্পেটিবল"""
         try:
-            from PIL import ImageFont, Image
+            from PIL import ImageFont
             
-            # First, try to create default bitmap font
-            try:
-                self.default_fonts = {
-                    'small': ImageFont.load_default(),
-                    'medium': ImageFont.load_default(),
-                    'large': ImageFont.load_default()
-                }
-            except:
-                pass
-            
-            # Font paths for Termux/Android/Linux/Windows
             font_paths = [
-                # Android/Termux
+                # Android/Termux paths
                 "/system/fonts/Roboto-Regular.ttf",
                 "/system/fonts/DroidSans.ttf",
                 "/system/fonts/NotoSansBengali-Regular.ttf",
-                "/system/fonts/NotoSans-Regular.ttf",
                 "/data/data/com.termux/files/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                 "/data/data/com.termux/files/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
                 
-                # Linux
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-                "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
-                
-                # Windows fallback (if running in Termux on Windows)
-                "C:/Windows/Fonts/arial.ttf",
-                "C:/Windows/Fonts/tahoma.ttf",
-                
                 # Project fonts
-                str(Path("fonts") / "arial.ttf"),
-                str(Path("fonts") / "DejaVuSans.ttf"),
-                
-                # Current directory
+                "fonts/arial.ttf",
+                "fonts/DejaVuSans.ttf",
                 "arial.ttf",
-                "DejaVuSans.ttf"
+                "DejaVuSans.ttf",
             ]
             
-            # Add config path if exists
-            try:
-                font_paths.append(str(Path(Config.FONTS_PATH) / "arial.ttf"))
-            except:
-                pass
-            
             self.font_cache = {}
-            loaded_font = None
             
             for font_path in font_paths:
                 if os.path.exists(font_path):
                     try:
-                        logger.info(f"Trying font: {font_path}")
-                        
-                        # Test load
-                        test_font = ImageFont.truetype(font_path, 20)
-                        
-                        # Load different sizes
-                        font_sizes = {
-                            'tiny': 16,
-                            'small': 20,
-                            'medium': 28,
-                            'large': 36,
-                            'xlarge': 44,
-                            'xxlarge': 52
-                        }
-                        
-                        for name, size in font_sizes.items():
-                            try:
-                                self.font_cache[name] = ImageFont.truetype(font_path, size)
-                            except:
-                                # Create scaled default font
-                                self.font_cache[name] = ImageFont.load_default()
+                        # Load multiple sizes
+                        self.font_cache['small'] = ImageFont.truetype(font_path, 20)
+                        self.font_cache['medium'] = ImageFont.truetype(font_path, 28)
+                        self.font_cache['large'] = ImageFont.truetype(font_path, 36)
+                        self.font_cache['xlarge'] = ImageFont.truetype(font_path, 44)
                         
                         self.font_available = True
-                        loaded_font = font_path
-                        logger.info(f"✅ Fonts loaded successfully from: {font_path}")
+                        logger.info(f"✅ Font loaded: {font_path}")
                         break
                         
-                    except Exception as font_error:
-                        logger.debug(f"Failed to load {font_path}: {font_error}")
+                    except Exception as e:
                         continue
             
             if not self.font_available:
-                logger.warning("No TrueType fonts found, using bitmap fonts only")
-                # Create scaled bitmap fonts
-                try:
-                    # Try to create custom bitmap-like fonts
-                    self.font_cache = {
-                        'tiny': ImageFont.load_default(),
-                        'small': ImageFont.load_default(),
-                        'medium': ImageFont.load_default(),
-                        'large': ImageFont.load_default()
-                    }
-                    logger.info("✅ Using PIL default bitmap fonts")
-                except:
-                    logger.error("❌ Could not load any fonts")
-            
+                logger.warning("Using default bitmap fonts")
+                self.font_cache = {
+                    'small': ImageFont.load_default(),
+                    'medium': ImageFont.load_default(),
+                    'large': ImageFont.load_default(),
+                    'xlarge': ImageFont.load_default(),
+                }
+                
         except Exception as e:
-            logger.error(f"⚠️ Font setup error: {e}")
+            logger.error(f"Font setup error: {e}")
             self.font_available = False
     
     def _load_templates(self) -> Dict[str, Dict]:
-        """টেমপ্লেট লোড করে - আরও রং যুক্ত"""
+        """টেমপ্লেট লোড করে"""
         return {
-            "day": {
-                "bg_color": (240, 248, 255),  # AliceBlue
-                "primary_color": (41, 128, 185),  # Peter River
-                "secondary_color": (52, 152, 219),  # Belize Hole
-                "border_color": (189, 195, 199),  # Silver
-                "accent_color": (241, 196, 15),  # Sun Flower
-                "text_shadow": (30, 30, 30)
-            },
-            "night": {
-                "bg_color": (25, 25, 35),  # Dark Blue Grey
-                "primary_color": (255, 105, 180),  # Hot Pink
-                "secondary_color": (0, 255, 255),  # Cyan
-                "border_color": (80, 80, 100),
-                "accent_color": (155, 89, 182),  # Amethyst
-                "text_shadow": (0, 0, 0)
+            "default": {
+                "bg_color": (25, 25, 35),
+                "primary_color": (255, 107, 53),   # #FF6B35
+                "secondary_color": (0, 180, 216),  # #00B4D8
+                "border_color": (255, 209, 102),   # #FFD166
+                "accent_color": (239, 71, 111),    # #EF476F
+                "text_color": (255, 255, 255),
+                "shadow_color": (0, 0, 0, 128)
             },
             "funny": {
-                "bg_color": (255, 250, 205),  # LemonChiffon
-                "primary_color": (255, 69, 0),  # Red-Orange
+                "bg_color": (255, 250, 205),       # LemonChiffon
+                "primary_color": (255, 69, 0),     # Red-Orange
                 "secondary_color": (255, 140, 0),  # Dark Orange
-                "border_color": (255, 182, 193),  # Light Pink
-                "accent_color": (50, 205, 50),  # Lime Green
-                "text_shadow": (100, 100, 100)
+                "border_color": (50, 205, 50),     # Lime Green
+                "accent_color": (138, 43, 226),    # Blue Violet
+                "text_color": (0, 0, 0),
+                "shadow_color": (100, 100, 100, 128)
             },
             "savage": {
-                "bg_color": (15, 15, 15),  # Almost Black
-                "primary_color": (220, 20, 60),  # Crimson
-                "secondary_color": (255, 0, 0),  # Red
-                "border_color": (139, 0, 0),  # Dark Red
-                "accent_color": (255, 215, 0),  # Gold
-                "text_shadow": (50, 0, 0)
+                "bg_color": (15, 15, 15),          # Almost Black
+                "primary_color": (220, 20, 60),    # Crimson
+                "secondary_color": (255, 0, 0),    # Red
+                "border_color": (255, 215, 0),     # Gold
+                "accent_color": (255, 20, 147),    # Deep Pink
+                "text_color": (255, 255, 255),
+                "shadow_color": (50, 0, 0, 128)
             },
             "welcome": {
-                "bg_color": (135, 206, 235),  # Sky Blue
+                "bg_color": (135, 206, 235),       # Sky Blue
                 "primary_color": (255, 255, 255),  # White
-                "secondary_color": (240, 248, 255),  # Alice Blue
-                "border_color": (70, 130, 180),  # Steel Blue
-                "accent_color": (255, 165, 0),  # Orange
-                "text_shadow": (30, 30, 100)
-            },
-            "premium": {
-                "bg_color": (25, 25, 35),  # Dark
-                "primary_color": (255, 215, 0),  # Gold
-                "secondary_color": (192, 192, 192),  # Silver
-                "border_color": (184, 134, 11),  # Dark Goldenrod
-                "accent_color": (218, 165, 32),  # Goldenrod
-                "text_shadow": (0, 0, 0)
+                "secondary_color": (70, 130, 180), # Steel Blue
+                "border_color": (255, 165, 0),     # Orange
+                "accent_color": (255, 255, 0),     # Yellow
+                "text_color": (0, 0, 0),
+                "shadow_color": (0, 0, 139, 128)   # Dark Blue
             },
             "vibrant": {
-                "bg_color": (0, 0, 30),  # Deep Blue
-                "primary_color": (0, 255, 255),  # Cyan
-                "secondary_color": (255, 20, 147),  # Deep Pink
-                "border_color": (0, 255, 127),  # Spring Green
-                "accent_color": (255, 255, 0),  # Yellow
-                "text_shadow": (0, 0, 0)
+                "bg_color": (0, 0, 30),            # Deep Blue
+                "primary_color": (0, 255, 255),    # Cyan
+                "secondary_color": (255, 20, 147), # Deep Pink
+                "border_color": (0, 255, 127),     # Spring Green
+                "accent_color": (255, 255, 0),     # Yellow
+                "text_color": (255, 255, 255),
+                "shadow_color": (0, 0, 0, 128)
+            },
+            "premium": {
+                "bg_color": (20, 20, 30),          # Dark Blue-Grey
+                "primary_color": (255, 215, 0),    # Gold
+                "secondary_color": (192, 192, 192),# Silver
+                "border_color": (184, 134, 11),    # Dark Goldenrod
+                "accent_color": (218, 165, 32),    # Goldenrod
+                "text_color": (255, 255, 255),
+                "shadow_color": (0, 0, 0, 128)
             }
         }
     
-    def create_gradient_background(self, width, height, colors):
-        """গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড তৈরি করে"""
+    def _load_color_palettes(self) -> Dict[str, List[Tuple]]:
+        """কালার প্যালেট লোড করে"""
+        return {
+            "gradient_1": [(255, 107, 53), (0, 180, 216)],  # Orange to Blue
+            "gradient_2": [(138, 43, 226), (255, 20, 147)], # Violet to Pink
+            "gradient_3": [(0, 255, 127), (0, 255, 255)],   # Green to Cyan
+            "gradient_4": [(255, 215, 0), (255, 69, 0)],    # Gold to Red
+            "gradient_5": [(25, 25, 35), (70, 130, 180)],   # Dark to Steel Blue
+        }
+    
+    def create_roast_image(self, 
+                          primary_text: str, 
+                          secondary_text: str = "",
+                          user_id: Optional[int] = None,
+                          roast_type: str = "default",
+                          border_style: str = None,
+                          add_decoration: bool = True) -> Any:
+        """রোস্ট ইমেজ তৈরি করে - HTML কম্পেটিবল"""
+        try:
+            if not self.use_pil:
+                return self._create_text_based_image(primary_text, secondary_text)
+            
+            from PIL import Image, ImageDraw, ImageFilter
+            
+            # Select random border if not specified
+            if not border_style:
+                border_style = random.choice(list(self.border_styles.keys()))
+            
+            # Get template
+            template = self.templates.get(roast_type, self.templates["default"])
+            
+            # Create base image with gradient
+            image = self._create_gradient_background(template)
+            
+            draw = ImageDraw.Draw(image)
+            
+            # Add decorative border
+            if add_decoration:
+                self._add_decorative_border(draw, template, border_style)
+            
+            # Add content
+            self._add_content(draw, primary_text, secondary_text, template)
+            
+            # Add user info if available
+            if user_id:
+                self._add_user_info(draw, user_id, template)
+            
+            # Add border symbols
+            self._add_border_symbols(draw, border_style, template)
+            
+            # Add final effects
+            image = self._apply_effects(image, template)
+            
+            return image
+            
+        except Exception as e:
+            log_error(f"Image creation error: {e}")
+            return self._create_error_image()
+    
+    def _create_gradient_background(self, template: Dict) -> Any:
+        """গ্রেডিয়েন্ট ব্যাকগ্রাউন্ড তৈরি করে"""
         try:
             from PIL import Image
             
-            # Create gradient
-            base = Image.new('RGB', (width, height), colors[0])
+            # Select random gradient
+            gradient_name = random.choice(list(self.colors.keys()))
+            colors = self.colors[gradient_name]
             
-            # Simple gradient effect
-            for y in range(height):
-                # Calculate color interpolation
-                ratio = y / height
+            # Create gradient
+            base = Image.new('RGB', (self.width, self.height), colors[0])
+            
+            # Vertical gradient
+            for y in range(self.height):
+                ratio = y / self.height
                 r = int(colors[0][0] * (1 - ratio) + colors[1][0] * ratio)
                 g = int(colors[0][1] * (1 - ratio) + colors[1][1] * ratio)
                 b = int(colors[0][2] * (1 - ratio) + colors[1][2] * ratio)
                 
-                # Draw line
-                for x in range(width):
+                for x in range(self.width):
                     base.putpixel((x, y), (r, g, b))
             
             return base
             
         except Exception as e:
-            # Fallback to solid color
-            return Image.new('RGB', (width, height), colors[0])
+            log_error(f"Gradient error: {e}")
+            from PIL import Image
+            return Image.new('RGB', (self.width, self.height), template["bg_color"])
     
-    def create_roast_image(self, primary_text: str, secondary_text: str = "", 
-                          user_id: Optional[int] = None, roast_type: str = "general",
-                          add_emoji: bool = True) -> Any:
-        """রোস্ট ইমেজ তৈরি করে - উন্নত ভার্সন"""
-        try:
-            if not self.use_pil:
-                logger.info("Using text-only mode")
-                return self._create_advanced_text_image(primary_text, secondary_text, roast_type)
-            
-            from PIL import Image, ImageDraw, ImageFilter
-            
-            # Select template
-            template = self._select_template(roast_type)
-            
-            # Create image with gradient background
-            colors = [template["bg_color"], self._darken_color(template["bg_color"], 0.8)]
-            image = self.create_gradient_background(self.width, self.height, colors)
-            draw = ImageDraw.Draw(image)
-            
-            # Add decorative border
-            self._add_decorative_border(draw, template)
-            
-            # Add header section
-            header_height = self.height // 4
-            self._add_header_section(draw, header_height, template, roast_type, add_emoji)
-            
-            # Add main content
-            self._add_main_content(draw, primary_text, secondary_text, header_height, template)
-            
-            # Add footer
-            self._add_footer(draw, template, user_id)
-            
-            # Add some effects
-            image = self._add_image_effects(image, template)
-            
-            logger.info(f"✅ Image created successfully for type: {roast_type}")
-            return image
-            
-        except Exception as e:
-            log_error(f"Image creation error: {e}")
-            logger.exception("Detailed error:")
-            return self._create_error_image(primary_text, secondary_text)
-    
-    def _select_template(self, roast_type: str) -> Dict:
-        """টেমপ্লেট সিলেক্ট করে - স্মার্ট সিলেকশন"""
-        is_day = TimeManager.is_day_time()
-        base_template = "day" if is_day else "night"
-        
-        template_map = {
-            "savage": "savage",
-            "burn": "savage", 
-            "roast": "savage",
-            "harsh": "savage",
-            "funny": "funny",
-            "joke": "funny",
-            "comedy": "funny",
-            "welcome": "welcome",
-            "greet": "welcome",
-            "premium": "premium",
-            "vip": "premium",
-            "vibrant": "vibrant",
-            "epic": "vibrant"
-        }
-        
-        selected = template_map.get(roast_type.lower(), base_template)
-        return self.templates.get(selected, self.templates[base_template])
-    
-    def _darken_color(self, color, factor=0.7):
-        """কালার ডার্কেন করে"""
-        return tuple(int(c * factor) for c in color)
-    
-    def _lighten_color(self, color, factor=1.3):
-        """কালার লাইটেন করে"""
-        return tuple(min(255, int(c * factor)) for c in color)
-    
-    def _add_decorative_border(self, draw, template):
+    def _add_decorative_border(self, draw, template: Dict, border_style: str):
         """ডেকোরেটিভ বর্ডার যোগ করে"""
         try:
             # Outer border
@@ -372,17 +287,17 @@ class ImageGenerator:
                 width=border_width
             )
             
-            # Inner border
-            inner_border = border_width + 20
+            # Inner accent border
+            inner_border = border_width + 10
             draw.rectangle(
                 [(inner_border, inner_border),
                  (self.width - inner_border, self.height - inner_border)],
-                outline=self._lighten_color(template["border_color"], 1.2),
+                outline=template["accent_color"],
                 width=3
             )
             
-            # Corner accents
-            corner_size = 30
+            # Corner decorations
+            corner_size = 25
             corners = [
                 (border_width, border_width),
                 (self.width - border_width - corner_size, border_width),
@@ -401,142 +316,195 @@ class ImageGenerator:
         except Exception as e:
             log_error(f"Border decoration error: {e}")
     
-    def _add_header_section(self, draw, header_height, template, roast_type, add_emoji):
-        """হেডার সেকশন যোগ করে"""
+    def _add_content(self, draw, primary_text: str, secondary_text: str, template: Dict):
+        """কনটেন্ট যোগ করে"""
         try:
-            # Header background
+            from PIL import ImageFont
+            
+            # Get fonts
+            font_large = self.font_cache.get('large', ImageFont.load_default())
+            font_medium = self.font_cache.get('medium', ImageFont.load_default())
+            font_small = self.font_cache.get('small', ImageFont.load_default())
+            
+            # Header area
+            header_height = 80
             draw.rectangle(
-                [(20, 20), (self.width - 20, header_height)],
-                fill=self._darken_color(template["bg_color"], 0.9),
-                outline=template["accent_color"],
+                [(30, 30), (self.width - 30, header_height)],
+                fill=template["primary_color"] + (100,),  # Add alpha
+                outline=template["border_color"],
                 width=2
             )
             
-            # Title
-            title = self._get_roast_title(roast_type)
-            if self.font_available:
-                font = self.font_cache.get('large', self.default_fonts.get('large'))
-            else:
-                from PIL import ImageFont
-                font = ImageFont.load_default()
-            
-            # Center text
-            text_width = self._get_text_width(title, font)
-            text_x = (self.width - text_width) // 2
-            text_y = header_height // 3
-            
-            # Text shadow
-            draw.text((text_x + 2, text_y + 2), title, font=font, fill=template["text_shadow"])
-            # Main text
-            draw.text((text_x, text_y), title, font=font, fill=template["primary_color"])
-            
-            # Add emoji if enabled
-            if add_emoji:
-                emoji = random.choice(self.emoji_fallback)
-                # Try to draw emoji (might not work in all fonts)
-                try:
-                    emoji_x = text_x - 40
-                    emoji_y = text_y
-                    draw.text((emoji_x, emoji_y), emoji, font=font, fill=template["accent_color"])
-                except:
-                    pass
-                    
-        except Exception as e:
-            log_error(f"Header error: {e}")
-    
-    def _get_roast_title(self, roast_type):
-        """রোস্ট টাইটেল রিটার্ন করে"""
-        titles = {
-            "savage": "SAVAGE ROAST 🔥",
-            "burn": "BURN NOTICE 🔥",
-            "funny": "FUNNY ROAST 😂",
-            "welcome": "WELCOME 👋",
-            "premium": "PREMIUM ROAST 👑",
-            "vibrant": "EPIC ROAST ⚡",
-            "general": "ROASTIFY BOT 🎯"
-        }
-        return titles.get(roast_type, "ROASTIFY BOT 🎯")
-    
-    def _add_main_content(self, draw, primary_text, secondary_text, header_y, template):
-        """মেইন কনটেন্ট যোগ করে"""
-        try:
-            content_start = header_y + 40
-            content_height = self.height - content_start - 80
-            
-            # Content background
-            draw.rectangle(
-                [(40, content_start), 
-                 (self.width - 40, self.height - 60)],
-                fill=(255, 255, 255, 50),
-                outline=template["secondary_color"],
-                width=1
+            # Draw header text
+            header_text = "🔥 Roastify Bot 🔥"
+            text_width = self._get_text_width(header_text, font_large)
+            draw.text(
+                ((self.width - text_width) // 2, 45),
+                header_text,
+                font=font_large,
+                fill=template["text_color"]
             )
             
-            # Get fonts
-            if self.font_available:
-                primary_font = self.font_cache.get('medium', self.default_fonts.get('medium'))
-                secondary_font = self.font_cache.get('small', self.default_fonts.get('small'))
-            else:
-                from PIL import ImageFont
-                primary_font = ImageFont.load_default()
-                secondary_font = ImageFont.load_default()
-            
             # Wrap and draw primary text
-            primary_lines = self._smart_wrap_text(primary_text, 30, primary_font)
-            primary_y = content_start + 30
+            primary_lines = self._smart_wrap_text(primary_text, 30, font_large)
+            primary_y = header_height + 40
             
-            for i, line in enumerate(primary_lines):
-                if i >= 4:  # Max 4 lines
-                    break
-                text_width = self._get_text_width(line, primary_font)
+            for i, line in enumerate(primary_lines[:3]):  # Max 3 lines
+                text_width = self._get_text_width(line, font_large)
                 x = (self.width - text_width) // 2
-                y = primary_y + (i * 45)
+                y = primary_y + (i * 50)
                 
-                # Text shadow for depth
-                draw.text((x + 1, y + 1), line, font=primary_font, fill=template["text_shadow"])
-                draw.text((x, y), line, font=primary_font, fill=template["primary_color"])
+                # Text shadow
+                draw.text(
+                    (x + 2, y + 2),
+                    line,
+                    font=font_large,
+                    fill=template["shadow_color"]
+                )
+                
+                # Main text
+                draw.text(
+                    (x, y),
+                    line,
+                    font=font_large,
+                    fill=template["primary_color"]
+                )
             
             # Separator line
-            separator_y = primary_y + len(primary_lines) * 45 + 20
+            separator_y = primary_y + len(primary_lines[:3]) * 50 + 20
             draw.line(
                 [(self.width // 4, separator_y),
                  (3 * self.width // 4, separator_y)],
-                fill=template["accent_color"],
-                width=2
+                fill=template["border_color"],
+                width=3
             )
             
-            # Draw secondary text if exists
+            # Draw secondary text
             if secondary_text:
-                secondary_lines = self._smart_wrap_text(secondary_text, 40, secondary_font)
+                secondary_lines = self._smart_wrap_text(secondary_text, 40, font_medium)
                 secondary_y = separator_y + 30
                 
-                for i, line in enumerate(secondary_lines):
-                    if i >= 3:  # Max 3 lines
-                        break
-                    text_width = self._get_text_width(line, secondary_font)
+                for i, line in enumerate(secondary_lines[:2]):  # Max 2 lines
+                    text_width = self._get_text_width(line, font_medium)
                     x = (self.width - text_width) // 2
-                    y = secondary_y + (i * 35)
+                    y = secondary_y + (i * 40)
                     
-                    draw.text((x, y), line, font=secondary_font, fill=template["secondary_color"])
+                    draw.text(
+                        (x, y),
+                        line,
+                        font=font_medium,
+                        fill=template["secondary_color"]
+                    )
                     
         except Exception as e:
-            log_error(f"Main content error: {e}")
-            # Fallback to simple text
-            draw.text((50, content_start + 50), primary_text, fill=template["primary_color"])
+            log_error(f"Content drawing error: {e}")
+            # Fallback
+            draw.text((50, 50), primary_text, fill=template["primary_color"])
             if secondary_text:
-                draw.text((50, content_start + 100), secondary_text, fill=template["secondary_color"])
+                draw.text((50, 100), secondary_text, fill=template["secondary_color"])
+    
+    def _add_user_info(self, draw, user_id: int, template: Dict):
+        """ইউজার ইনফো যোগ করে"""
+        try:
+            from PIL import ImageFont
+            
+            font_small = self.font_cache.get('small', ImageFont.load_default())
+            footer_y = self.height - 50
+            
+            # User info text
+            user_info = f"User ID: {user_id}"
+            text_width = self._get_text_width(user_info, font_small)
+            
+            draw.text(
+                ((self.width - text_width) // 2, footer_y),
+                user_info,
+                font=font_small,
+                fill=template["secondary_color"]
+            )
+            
+            # Timestamp
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            time_width = self._get_text_width(timestamp, font_small)
+            
+            draw.text(
+                ((self.width - time_width) // 2, footer_y + 25),
+                timestamp,
+                font=font_small,
+                fill=template["border_color"]
+            )
+            
+        except Exception as e:
+            log_error(f"User info error: {e}")
+    
+    def _add_border_symbols(self, draw, border_style: str, template: Dict):
+        """বর্ডার সিম্বল যোগ করে"""
+        try:
+            from PIL import ImageFont
+            
+            font_medium = self.font_cache.get('medium', ImageFont.load_default())
+            symbol = self.border_styles.get(border_style, "🔥")
+            
+            # Top border symbols
+            symbol_count = self.width // 40
+            for i in range(symbol_count):
+                x = 30 + (i * 40)
+                draw.text((x, 15), symbol, font=font_medium, fill=template["border_color"])
+            
+            # Bottom border symbols
+            for i in range(symbol_count):
+                x = 30 + (i * 40)
+                draw.text((x, self.height - 40), symbol, font=font_medium, fill=template["border_color"])
+                
+        except Exception as e:
+            log_error(f"Border symbols error: {e}")
+    
+    def _apply_effects(self, image, template: Dict) -> Any:
+        """ইফেক্ট প্রয়োগ করে"""
+        try:
+            from PIL import ImageFilter, ImageEnhance
+            
+            # Slight blur to background
+            blurred = image.filter(ImageFilter.GaussianBlur(radius=0.5))
+            
+            # Enhance colors
+            enhancer = ImageEnhance.Color(blurred)
+            enhanced = enhancer.enhance(1.1)
+            
+            # Enhance contrast
+            contrast = ImageEnhance.Contrast(enhanced)
+            result = contrast.enhance(1.05)
+            
+            # Add vignette effect
+            width, height = result.size
+            for y in range(height):
+                for x in range(width):
+                    dx = (x - width/2) / (width/2)
+                    dy = (y - height/2) / (height/2)
+                    distance = (dx*dx + dy*dy) * 0.5
+                    
+                    if distance > 0.3:
+                        pixel = result.getpixel((x, y))
+                        darken = max(0.8, 1 - distance)
+                        new_pixel = tuple(int(c * darken) for c in pixel)
+                        result.putpixel((x, y), new_pixel)
+            
+            return result
+            
+        except Exception as e:
+            log_error(f"Effects error: {e}")
+            return image
     
     def _smart_wrap_text(self, text: str, max_chars: int, font) -> List[str]:
         """স্মার্ট টেক্সট র‍্যাপিং"""
         if not text:
             return []
         
-        # First try simple wrap
+        # Simple wrap first
         lines = textwrap.wrap(text, width=max_chars)
         
         # Adjust based on actual width
-        if self.font_available and len(lines) > 0:
-            adjusted_lines = []
+        if self.font_available and lines:
+            adjusted = []
             current_line = ""
             
             words = text.split()
@@ -546,180 +514,106 @@ class ImageGenerator:
                     current_line = test_line
                 else:
                     if current_line:
-                        adjusted_lines.append(current_line)
+                        adjusted.append(current_line)
                     current_line = word
             
             if current_line:
-                adjusted_lines.append(current_line)
+                adjusted.append(current_line)
             
-            if adjusted_lines:
-                return adjusted_lines
+            return adjusted if adjusted else lines
         
         return lines if lines else [text]
     
-    def _add_footer(self, draw, template, user_id):
-        """ফুটার যোগ করে"""
-        try:
-            footer_y = self.height - 40
-            
-            # Footer line
-            draw.line(
-                [(50, footer_y), (self.width - 50, footer_y)],
-                fill=template["border_color"],
-                width=2
-            )
-            
-            # Footer text
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            footer_text = f"Roastify Bot • {timestamp}"
-            
-            if user_id:
-                footer_text += f" • ID: {user_id}"
-            
-            if self.font_available:
-                font = self.font_cache.get('tiny', self.default_fonts.get('tiny'))
-            else:
-                from PIL import ImageFont
-                font = ImageFont.load_default()
-            
-            text_width = self._get_text_width(footer_text, font)
-            text_x = (self.width - text_width) // 2
-            
-            draw.text((text_x, footer_y + 10), footer_text, font=font, 
-                     fill=self._lighten_color(template["border_color"], 1.5))
-            
-        except Exception as e:
-            log_error(f"Footer error: {e}")
-    
-    def _add_image_effects(self, image, template):
-        """ইমেজ ইফেক্ট যোগ করে"""
-        try:
-            from PIL import ImageFilter, ImageEnhance
-            
-            # Slight blur to background edges
-            # Create a copy for effects
-            enhanced = image.copy()
-            
-            # Enhance contrast slightly
-            enhancer = ImageEnhance.Contrast(enhanced)
-            enhanced = enhancer.enhance(1.1)
-            
-            # Enhance color
-            color_enhancer = ImageEnhance.Color(enhanced)
-            enhanced = color_enhancer.enhance(1.05)
-            
-            # Add subtle vignette effect
-            width, height = enhanced.size
-            for y in range(height):
-                for x in range(width):
-                    # Calculate distance from center
-                    dx = (x - width/2) / (width/2)
-                    dy = (y - height/2) / (height/2)
-                    distance = (dx*dx + dy*dy) * 0.5
-                    
-                    # Apply darkening at edges
-                    if distance > 0.3:
-                        pixel = enhanced.getpixel((x, y))
-                        darken = max(0.7, 1 - distance)
-                        new_pixel = tuple(int(c * darken) for c in pixel)
-                        enhanced.putpixel((x, y), new_pixel)
-            
-            return enhanced
-            
-        except Exception as e:
-            log_error(f"Image effects error: {e}")
-            return image
-    
     def _get_text_width(self, text: str, font) -> int:
-        """টেক্সট প্রস্থ বের করে - উন্নত"""
+        """টেক্সট প্রস্থ বের করে"""
         try:
-            if hasattr(font, 'getlength'):
-                return int(font.getlength(text))
-            elif hasattr(font, 'getbbox'):
+            if hasattr(font, 'getbbox'):
                 bbox = font.getbbox(text)
-                return bbox[2] - bbox[0] if bbox else len(text) * 8
+                return bbox[2] - bbox[0] if bbox else len(text) * 10
             elif hasattr(font, 'getsize'):
                 return font.getsize(text)[0]
             else:
-                # Estimate based on character count
-                return len(text) * (10 if len(text) < 20 else 8)
+                return len(text) * 10
         except:
-            return len(text) * 8
+            return len(text) * 10
     
-    def _create_advanced_text_image(self, primary_text, secondary_text, roast_type):
-        """এডভান্সড টেক্সট-ওনলি ইমেজ"""
+    def _create_text_based_image(self, primary_text: str, secondary_text: str) -> Any:
+        """টেক্সট-বেসড ইমেজ তৈরি করে"""
         try:
-            # Try to use PIL even in fallback
             from PIL import Image, ImageDraw, ImageFont
             
             image = Image.new('RGB', (self.width, self.height), (25, 25, 35))
             draw = ImageDraw.Draw(image)
             font = ImageFont.load_default()
             
-            # Create text-based design
-            margin = 30
-            line_height = 30
+            # Add decorative elements
+            draw.rectangle([(10, 10), (self.width-10, self.height-10)], 
+                          outline=(255, 107, 53), width=3)
             
-            # Header
-            draw.text((margin, margin), "╔════════════════════════╗", fill=(255, 215, 0))
-            draw.text((margin, margin + line_height), "     ROASTIFY BOT", fill=(255, 215, 0))
-            draw.text((margin, margin + line_height*2), "╚════════════════════════╝", fill=(255, 215, 0))
+            # Text with border effect
+            text_lines = [
+                "╔══════════════════════════╗",
+                "   🔥 ROASTIFY BOT 🔥   ",
+                "╚══════════════════════════╝",
+                "",
+                primary_text[:100],
+                "",
+                secondary_text[:80] if secondary_text else "Professional Roast Service",
+                "",
+                "═" * 30,
+                f"📅 {datetime.now().strftime('%Y-%m-%d')}",
+                f"⏰ {datetime.now().strftime('%H:%M:%S')}"
+            ]
             
-            # Primary text
-            primary_lines = textwrap.wrap(primary_text, width=40)
-            for i, line in enumerate(primary_lines[:4]):  # Max 4 lines
-                y_pos = margin + 100 + (i * line_height)
-                draw.text((margin + 10, y_pos), f"» {line}", fill=(255, 105, 180))
-            
-            # Separator
-            draw.text((margin, margin + 220), "─" * 40, fill=(100, 100, 100))
-            
-            # Secondary text
-            if secondary_text:
-                secondary_lines = textwrap.wrap(secondary_text, width=50)
-                for i, line in enumerate(secondary_lines[:3]):  # Max 3 lines
-                    y_pos = margin + 250 + (i * line_height)
-                    draw.text((margin, y_pos), f"• {line}", fill=(0, 255, 255))
-            
-            # Footer
-            timestamp = datetime.now().strftime("%H:%M")
-            draw.text((margin, self.height - 50), f"Generated at {timestamp}", fill=(150, 150, 150))
+            for i, line in enumerate(text_lines):
+                y_pos = 30 + (i * 30)
+                if i < 3:
+                    draw.text((20, y_pos), line, fill=(255, 107, 53))
+                elif i == 4:
+                    draw.text((20, y_pos), line, fill=(0, 180, 216))
+                else:
+                    draw.text((20, y_pos), line, fill=(255, 255, 255))
             
             return image
             
         except Exception as e:
-            log_error(f"Advanced text image error: {e}")
-            return self._create_error_image(primary_text, secondary_text)
+            log_error(f"Text image error: {e}")
+            return self._create_error_image()
     
-    def _create_error_image(self, primary_text="", secondary_text=""):
+    def _create_error_image(self):
         """এরর ইমেজ তৈরি করে"""
         try:
             from PIL import Image, ImageDraw, ImageFont
             
-            image = Image.new('RGB', (500, 300), (40, 40, 60))
+            image = Image.new('RGB', (500, 300), (220, 20, 60))
             draw = ImageDraw.Draw(image)
             font = ImageFont.load_default()
             
-            # Error box
-            draw.rectangle([(50, 50), (450, 250)], fill=(60, 60, 80), outline=(255, 100, 100))
+            # Error message with style
+            draw.rectangle([(50, 50), (450, 250)], 
+                          fill=(255, 255, 255, 200), 
+                          outline=(0, 0, 0))
             
-            # Error title
-            draw.text((150, 80), "⚠️ ROAST GENERATOR ⚠️", fill=(255, 100, 100))
+            error_lines = [
+                "╔══════════════════════╗",
+                "   ⚠️ ERROR ⚠️   ",
+                "╚══════════════════════╝",
+                "",
+                "Image generation failed!",
+                "",
+                "Please try again...",
+                "",
+                "🔥 Roastify Bot 🔥"
+            ]
             
-            # Messages
-            if primary_text:
-                draw.text((100, 130), primary_text[:50], fill=(255, 200, 200))
-            
-            if secondary_text:
-                draw.text((100, 160), secondary_text[:50], fill=(200, 200, 255))
-            
-            # Status
-            draw.text((150, 200), "Image rendering active...", fill=(100, 255, 100))
+            for i, line in enumerate(error_lines):
+                y_pos = 80 + (i * 25)
+                draw.text((100, y_pos), line, fill=(0, 0, 0))
             
             return image
             
-        except:
-            # Ultimate fallback - create simple image
+        except Exception as e:
+            log_error(f"Error image creation failed: {e}")
             try:
                 from PIL import Image
                 return Image.new('RGB', (400, 200), (255, 255, 255))
@@ -727,253 +621,172 @@ class ImageGenerator:
                 return None
     
     def save_image(self, image, filename: str = None) -> str:
-        """ইমেজ ফাইল হিসেবে সেভ করে - উন্নত"""
+        """ইমেজ সেভ করে"""
         try:
             if image is None:
-                raise ValueError("Image object is None")
+                raise ValueError("Image is None")
             
             # Generate filename
             if not filename:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-                filename = f"roast_{timestamp}.png"
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                random_hash = hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
+                filename = f"roast_{timestamp}_{random_hash}.png"
             
-            # Ensure valid filename
-            filename = filename.replace(" ", "_").replace(":", "")
-            
-            # Create output directory
+            # Create directory
             output_dir = Path("generated_images")
             output_dir.mkdir(exist_ok=True)
             
             output_path = output_dir / filename
             
             # Save with optimization
-            image.save(
-                output_path, 
-                "PNG", 
-                optimize=True, 
-                compress_level=9
-            )
+            image.save(output_path, "PNG", optimize=True, compress_level=9)
             
-            # Verify file was saved
-            if output_path.exists() and output_path.stat().st_size > 0:
-                log_info(f"✅ Image saved: {output_path} (Size: {output_path.stat().st_size} bytes)")
-                return str(output_path)
-            else:
-                raise Exception("File save verification failed")
+            log_info(f"✅ Image saved: {output_path}")
+            return str(output_path)
             
         except Exception as e:
-            log_error(f"❌ Error saving image: {e}")
+            log_error(f"❌ Save error: {e}")
             
-            # Multiple fallback strategies
+            # Fallback save
             try:
                 import tempfile
-                
-                # Try different formats
-                formats = ["PNG", "JPEG", "BMP"]
-                
-                for fmt in formats:
-                    try:
-                        temp_file = tempfile.NamedTemporaryFile(
-                            delete=False, 
-                            suffix=f'.{fmt.lower()}',
-                            prefix='roast_'
-                        )
-                        
-                        if fmt == "JPEG":
-                            image.save(temp_file.name, fmt, quality=95)
-                        else:
-                            image.save(temp_file.name, fmt)
-                        
-                        log_info(f"✅ Image saved to temp: {temp_file.name}")
-                        return temp_file.name
-                        
-                    except:
-                        continue
-                
-                # Last resort: save to current directory
-                simple_path = f"roast_fallback_{datetime.now().timestamp()}.png"
-                image.save(simple_path, "PNG")
-                return simple_path
-                
-            except Exception as fallback_error:
-                log_error(f"❌ All save attempts failed: {fallback_error}")
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+                image.save(temp_file.name, "PNG")
+                return temp_file.name
+            except:
                 return ""
+    
+    def image_to_bytes(self, image) -> BytesIO:
+        """ইমেজকে বাইটসে কনভার্ট করে"""
+        try:
+            buffered = BytesIO()
+            image.save(buffered, format="PNG", optimize=True)
+            buffered.seek(0)
+            return buffered
+            
+        except Exception as e:
+            log_error(f"Bytes conversion error: {e}")
+            return self._create_fallback_bytes()
+    
+    def _create_fallback_bytes(self) -> BytesIO:
+        """ফলব্যাক বাইটস তৈরি করে"""
+        try:
+            from PIL import Image, ImageDraw
+            
+            img = Image.new('RGB', (400, 200), (255, 107, 53))
+            draw = ImageDraw.Draw(img)
+            draw.text((100, 80), "🔥 Roastify Bot 🔥", fill=(255, 255, 255))
+            
+            buffered = BytesIO()
+            img.save(buffered, format="PNG")
+            buffered.seek(0)
+            return buffered
+            
+        except:
+            return BytesIO(b'')
     
     def image_to_base64(self, image) -> str:
         """ইমেজকে Base64 এ কনভার্ট করে"""
         try:
             buffered = BytesIO()
-            
-            # Save to buffer
-            image.save(buffered, format="PNG", optimize=True)
-            
-            # Get base64
-            img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-            
-            # Add data URI prefix if needed
-            # data_uri = f"data:image/png;base64,{img_str}"
-            
+            image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode()
             return img_str
             
         except Exception as e:
-            log_error(f"Base64 conversion error: {e}")
-            
-            # Return a placeholder image in base64
-            try:
-                placeholder = self._create_error_image("Base64 Error", "Image conversion failed")
-                buffered = BytesIO()
-                placeholder.save(buffered, format="PNG")
-                return base64.b64encode(buffered.getvalue()).decode('utf-8')
-            except:
-                return ""
-    
-    def get_image_stats(self) -> Dict[str, Any]:
-        """ইমেজ স্ট্যাটস রিটার্ন করে"""
-        return {
-            "version": "2.0",
-            "pil_available": self.use_pil,
-            "fonts_available": self.font_available,
-            "font_cache_size": len(self.font_cache) if hasattr(self, 'font_cache') else 0,
-            "image_width": self.width,
-            "image_height": self.height,
-            "templates_loaded": len(self.templates),
-            "status": "Operational" if self.use_pil else "Text-Only Mode"
-        }
+            log_error(f"Base64 error: {e}")
+            return ""
     
     def cleanup_temp_files(self, max_age_hours: int = 24):
         """টেম্প ফাইল ক্লিনআপ করে"""
         try:
             import time
-            import shutil
+            from pathlib import Path
+            
+            gen_path = Path("generated_images")
+            if not gen_path.exists():
+                return
             
             current_time = time.time()
-            max_age_seconds = max_age_hours * 3600
+            cutoff = current_time - (max_age_hours * 3600)
             
-            # Clean generated_images directory
-            gen_path = Path("generated_images")
-            if gen_path.exists():
-                files_deleted = 0
-                for img_file in gen_path.glob("*.*"):
+            files_deleted = 0
+            for img_file in gen_path.glob("*.png"):
+                if img_file.stat().st_mtime < cutoff:
                     try:
-                        file_age = current_time - img_file.stat().st_mtime
-                        
-                        if file_age > max_age_seconds:
-                            img_file.unlink()
-                            files_deleted += 1
-                            logger.debug(f"Removed old image: {img_file.name}")
+                        img_file.unlink()
+                        files_deleted += 1
                     except:
                         continue
-                
-                if files_deleted > 0:
-                    logger.info(f"Cleaned up {files_deleted} old image files")
             
-            # Clean system temp files
-            temp_dir = "/tmp"
-            if os.path.exists(temp_dir):
-                for temp_file in Path(temp_dir).glob("roast_*.*"):
-                    try:
-                        if temp_file.stat().st_mtime < (current_time - 3600):  # 1 hour
-                            temp_file.unlink()
-                    except:
-                        pass
-                        
-        except Exception as e:
-            logger.error(f"Cleanup error: {e}")
-    
-    def quick_roast_image(self, text: str, style: str = "funny") -> Any:
-        """কুইক রোস্ট ইমেজ তৈরি করে"""
-        return self.create_roast_image(
-            primary_text=text,
-            secondary_text="",
-            roast_type=style,
-            add_emoji=True
-        )
-    
-    def test_all_templates(self):
-        """সকল টেমপ্লেট টেস্ট করে"""
-        results = []
-        
-        for template_name in self.templates.keys():
-            try:
-                test_image = self.create_roast_image(
-                    primary_text=f"Testing {template_name}",
-                    secondary_text="Roastify Bot Template Test",
-                    roast_type=template_name
-                )
+            if files_deleted:
+                logger.info(f"Cleaned {files_deleted} old images")
                 
-                if test_image:
-                    # Save test image
-                    filename = f"test_{template_name}.png"
-                    save_path = self.save_image(test_image, filename)
-                    
-                    results.append({
-                        "template": template_name,
-                        "status": "SUCCESS",
-                        "path": save_path
-                    })
-                else:
-                    results.append({
-                        "template": template_name,
-                        "status": "FAILED",
-                        "error": "Image creation returned None"
-                    })
-                    
-            except Exception as e:
-                results.append({
-                    "template": template_name,
-                    "status": "ERROR",
-                    "error": str(e)
-                })
+        except Exception as e:
+            log_error(f"Cleanup error: {e}")
+    
+    def get_image_stats(self) -> Dict[str, Any]:
+        """ইমেজ স্ট্যাটস রিটার্ন করে"""
+        return {
+            "version": "3.0",
+            "pil_available": self.use_pil,
+            "font_available": self.font_available,
+            "templates": len(self.templates),
+            "border_styles": len(self.border_styles),
+            "image_size": f"{self.width}x{self.height}",
+            "color_palettes": len(self.colors)
+        }
+    
+    def create_html_compatible_image(self, 
+                                    primary_html: str, 
+                                    secondary_html: str = "",
+                                    user_id: Optional[int] = None) -> Any:
+        """HTML কম্পেটিবল ইমেজ তৈরি করে"""
+        # Remove HTML tags for image text
+        import re
+        clean_primary = re.sub(r'<[^>]+>', '', primary_html)
+        clean_secondary = re.sub(r'<[^>]+>', '', secondary_html)
         
-        return results
+        return self.create_roast_image(
+            primary_text=clean_primary[:100],
+            secondary_text=clean_secondary[:80],
+            user_id=user_id,
+            border_style=random.choice(list(self.border_styles.keys()))
+        )
 
+# Global instance
+image_generator = AdvancedImageGenerator()
 
-# Singleton instance with lazy loading
-_image_generator_instance = None
-
-def get_image_generator():
+def get_image_generator() -> AdvancedImageGenerator:
     """গ্লোবাল ইমেজ জেনারেটর ইনস্ট্যান্স রিটার্ন করে"""
-    global _image_generator_instance
-    
-    if _image_generator_instance is None:
-        _image_generator_instance = ProfessionalImageGenerator()
-    
-    return _image_generator_instance
+    return image_generator
 
-
-# Usage example
+# Test function
 if __name__ == "__main__":
-    print("Testing Professional Image Generator v2.0...")
+    print("Testing Advanced Image Generator...")
     
-    # Get instance
-    generator = get_image_generator()
+    gen = get_image_generator()
+    stats = gen.get_image_stats()
     
-    # Print stats
-    stats = generator.get_image_stats()
     print(f"\n📊 Generator Stats:")
     for key, value in stats.items():
         print(f"  {key}: {value}")
     
-    # Test creation
-    print("\n🎨 Testing image creation...")
-    test_image = generator.create_roast_image(
-        primary_text="This is a test roast!",
-        secondary_text="Generated by Roastify Bot v2.0",
-        roast_type="savage"
+    # Test image creation
+    test_image = gen.create_roast_image(
+        primary_text="This is a test roast for HTML compatibility!",
+        secondary_text="Roastify Bot Professional Edition",
+        user_id=123456,
+        roast_type="savage",
+        border_style="fire"
     )
     
     if test_image:
-        # Save image
-        save_path = generator.save_image(test_image, "test_output.png")
-        print(f"✅ Test image saved to: {save_path}")
+        save_path = gen.save_image(test_image, "test_output.png")
+        print(f"✅ Test image saved: {save_path}")
         
-        # Get base64
-        b64 = generator.image_to_base64(test_image)
-        print(f"✅ Base64 length: {len(b64)} characters")
-        
-        # Test quick roast
-        quick_img = generator.quick_roast_image("Quick roast test!", "funny")
-        quick_path = generator.save_image(quick_img, "quick_test.png")
-        print(f"✅ Quick roast saved to: {quick_path}")
-        
-    print("\n✨ Testing completed successfully!")
+        # Test bytes conversion
+        image_bytes = gen.image_to_bytes(test_image)
+        print(f"✅ Bytes conversion successful: {len(image_bytes.getvalue())} bytes")
+    
+    print("\n✨ Testing completed!")
