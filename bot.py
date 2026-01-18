@@ -13,6 +13,13 @@ import random
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+# Add current directory and roast_engine to path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+roast_engine_path = os.path.join(current_dir, 'roast_engine')
+if os.path.exists(roast_engine_path):
+    sys.path.insert(0, roast_engine_path)
+
 from dotenv import load_dotenv
 from telegram import (
     Update, 
@@ -32,16 +39,119 @@ from telegram.ext import (
     ConversationHandler
 )
 
-# Import project modules
-try:
-    from safety_checker import SafetyChecker
-    from image_generator import AdvancedImageGenerator
-    from auto_quote import AutoQuoteSystem
-    from database import DatabaseManager
-    from config_loader import load_config
-except ImportError as e:
-    print(f"<b>❌ Import error:</b> {e}")
-    sys.exit(1)
+# Import project modules with fallbacks
+def import_with_fallback():
+    """Import modules with fallback to dummy classes"""
+    
+    # SafetyChecker
+    try:
+        from safety_checker import SafetyChecker
+    except ImportError:
+        class SafetyChecker:
+            def __init__(self):
+                self.logger = logging.getLogger(__name__)
+                self.logger.info("⚠️ Using dummy SafetyChecker")
+                self.banned_words = ["fuck", "shit", "asshole", "গালি"]
+            
+            def is_safe(self, text, user_id=None):
+                if not text:
+                    return False
+                text_lower = text.lower()
+                for word in self.banned_words:
+                    if word in text_lower:
+                        return False
+                return True
+    
+    # ImageGenerator
+    try:
+        from image_generator import AdvancedImageGenerator
+    except ImportError:
+        class AdvancedImageGenerator:
+            def __init__(self):
+                self.logger = logging.getLogger(__name__)
+                self.logger.info("⚠️ Using dummy ImageGenerator")
+            
+            def generate_roast_image(self, roast_text, name, style="default"):
+                self.logger.info(f"📸 Would generate image for {name}")
+                return None
+    
+    # AutoQuoteSystem
+    try:
+        from auto_quote import AutoQuoteSystem
+    except ImportError:
+        class AutoQuoteSystem:
+            def __init__(self, bot=None):
+                self.bot = bot
+                self.logger = logging.getLogger(__name__)
+                self.logger.info("⚠️ Using dummy AutoQuoteSystem")
+                self.quotes = [
+                    "জীবন সুন্দর",
+                    "চেষ্টা করলে সফল হবে",
+                    "ভালোবাসা সব সমস্যার সমাধান"
+                ]
+            
+            async def get_random_quote(self):
+                import random
+                return f"📜 <b>Quote:</b> {random.choice(self.quotes)}"
+            
+            async def get_random_joke(self):
+                jokes = [
+                    "শিক্ষক: পরীক্ষার সময় কপি করবে কেন?\nছাত্র: স্যার, কপিরাইট তো ভাঙবো না!",
+                    "ডাক্তার: আপনার হার্টের অবস্থা ভালো না।\nরোগী: কষ্ট করে বলছেন কেন, মেসেজ করে দিতেন!"
+                ]
+                import random
+                return f"😂 <b>Joke:</b> {random.choice(jokes)}"
+            
+            async def get_random_fact(self):
+                facts = [
+                    "মৌমাছিরা এক সেকেন্ডে ২০০ বার ডানা ঝাপটায়",
+                    "মানুষের মস্তিষ্ক ৭৫% পানি দিয়ে তৈরি"
+                ]
+                import random
+                return f"🔍 <b>Fact:</b> {random.choice(facts)}"
+    
+    # DatabaseManager
+    try:
+        from database import DatabaseManager
+    except ImportError:
+        class DatabaseManager:
+            def __init__(self):
+                self.logger = logging.getLogger(__name__)
+                self.logger.info("⚠️ Using dummy DatabaseManager")
+                self.users = {}
+            
+            def add_user(self, user_id, first_name, username=None):
+                self.users[user_id] = {"name": first_name, "username": username}
+                return True
+            
+            def get_user_stats(self, user_id):
+                return {"roast_count": 0}
+    
+    # Config Loader
+    try:
+        from config_loader import load_config
+    except ImportError:
+        def load_config():
+            config = {
+                'BOT_TOKEN': os.getenv('BOT_TOKEN', ''),
+                'ADMIN_IDS': [],
+                'LOG_LEVEL': 'INFO',
+                'DATABASE_URL': 'sqlite:///roastify.db',
+                'RATE_LIMIT': 5,
+                'DAILY_LIMIT': 20,
+                'MAX_IMAGE_SIZE': 5242880,
+                'GROUP_ID': '',
+                'CHANNEL_ID': '',
+                'AUTO_QUOTE_INTERVAL': 3600,
+                'ENABLE_AUTO_QUOTES': True
+            }
+            return config
+    
+    return (SafetyChecker, AdvancedImageGenerator, AutoQuoteSystem, 
+            DatabaseManager, load_config)
+
+# Import with fallback
+SafetyChecker, AdvancedImageGenerator, AutoQuoteSystem, DatabaseManager, load_config_func = import_with_fallback()
 
 # Conversation states
 NAME, PHOTO, CONFIRM = range(3)
@@ -60,7 +170,11 @@ class RoastifyBot:
         # Bot token validation
         self.bot_token = self.config.get('BOT_TOKEN')
         if not self.bot_token or self.bot_token == 'YOUR_BOT_TOKEN_HERE':
-            raise ValueError("<b>❌ BOT_TOKEN not found or invalid in .env file</b>")
+            # Try to get from environment
+            load_dotenv()
+            self.bot_token = os.getenv('BOT_TOKEN', '')
+            if not self.bot_token:
+                raise ValueError("<b>❌ BOT_TOKEN not found in .env file</b>\nPlease add BOT_TOKEN to .env file")
         
         # Initialize application with persistence
         self.application = Application.builder() \
@@ -124,35 +238,12 @@ class RoastifyBot:
     
     def load_config(self):
         """Load configuration from .env file"""
-        config = {}
-        env_path = Path('.env')
-        
-        if env_path.exists():
-            load_dotenv()
-            self.logger.info("📁 Loading config from .env file")
-            
-            # Essential configuration
-            config['BOT_TOKEN'] = os.getenv('BOT_TOKEN', '')
-            admin_ids = os.getenv('ADMIN_IDS', '')
-            config['ADMIN_IDS'] = [int(id.strip()) for id in admin_ids.split(',') if id.strip().isdigit()]
-            config['LOG_LEVEL'] = os.getenv('LOG_LEVEL', 'INFO')
-            config['DATABASE_URL'] = os.getenv('DATABASE_URL', 'sqlite:///roastify.db')
-            
-            # Bot settings
-            config['RATE_LIMIT'] = int(os.getenv('RATE_LIMIT', '5'))
-            config['DAILY_LIMIT'] = int(os.getenv('DAILY_LIMIT', '20'))
-            config['MAX_IMAGE_SIZE'] = int(os.getenv('MAX_IMAGE_SIZE', '5242880'))
-            config['GROUP_ID'] = os.getenv('GROUP_ID', '')
-            config['CHANNEL_ID'] = os.getenv('CHANNEL_ID', '')
-            
-            # Auto quote settings
-            config['AUTO_QUOTE_INTERVAL'] = int(os.getenv('AUTO_QUOTE_INTERVAL', '3600'))
-            config['ENABLE_AUTO_QUOTES'] = os.getenv('ENABLE_AUTO_QUOTES', 'True').lower() == 'true'
-            
-        else:
-            self.logger.warning("⚠️ .env file not found, using default configuration")
-            config = {
-                'BOT_TOKEN': '',
+        try:
+            return load_config_func()
+        except Exception as e:
+            self.logger.error(f"❌ Error loading config: {e}")
+            return {
+                'BOT_TOKEN': os.getenv('BOT_TOKEN', ''),
                 'ADMIN_IDS': [],
                 'LOG_LEVEL': 'INFO',
                 'DATABASE_URL': 'sqlite:///roastify.db',
@@ -164,8 +255,6 @@ class RoastifyBot:
                 'AUTO_QUOTE_INTERVAL': 3600,
                 'ENABLE_AUTO_QUOTES': True
             }
-        
-        return config
     
     def initialize_modules(self):
         """Initialize all bot modules"""
@@ -193,18 +282,6 @@ class RoastifyBot:
     def register_all_handlers(self):
         """Register all command and message handlers"""
         
-        # ========== CONVERSATION HANDLERS ==========
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("create", self.create_roast_start)],
-            states={
-                NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.get_roast_name)],
-                PHOTO: [MessageHandler(filters.PHOTO | filters.TEXT, self.get_roast_photo)],
-                CONFIRM: [CallbackQueryHandler(self.confirm_roast)]
-            },
-            fallbacks=[CommandHandler("cancel", self.cancel_create)]
-        )
-        self.application.add_handler(conv_handler)
-        
         # ========== BASIC COMMANDS ==========
         basic_commands = [
             ("start", self.start_command),
@@ -212,78 +289,18 @@ class RoastifyBot:
             ("roast", self.roast_command),
             ("stats", self.stats_command),
             ("profile", self.profile_command),
-            ("leaderboard", self.leaderboard_command),
-            ("settings", self.settings_command),
-            ("donate", self.donate_command),
-            ("feedback", self.feedback_command),
             ("quote", self.quote_command),
-            ("meme", self.meme_command),
             ("joke", self.joke_command),
-            ("compliment", self.compliment_command),
             ("fact", self.fact_command),
-            ("quote_of_day", self.quote_of_day_command),
-            ("roast_stats", self.roast_stats_command),
             ("invite", self.invite_command),
             ("support", self.support_command),
-            ("changelog", self.changelog_command),
-            ("version", self.version_command),
-            ("tutorial", self.tutorial_command),
-            ("features", self.features_command),
-            ("commands", self.commands_list_command),
-            ("language", self.language_command),
-            ("theme", self.theme_command),
-            ("notifications", self.notifications_command),
-            ("privacy", self.privacy_command),
-            ("terms", self.terms_command),
-            ("report", self.report_command),
-            ("bug", self.bug_report_command),
-            ("suggestion", self.suggestion_command)
         ]
         
         for command, handler in basic_commands:
             self.application.add_handler(CommandHandler(command, handler))
         
-        # ========== ADMIN COMMANDS ==========
-        admin_commands = [
-            ("admin", self.admin_command),
-            ("broadcast", self.broadcast_command),
-            ("ban", self.ban_command),
-            ("unban", self.unban_command),
-            ("users", self.users_command),
-            ("backup", self.backup_command),
-            ("restart", self.restart_command),
-            ("logs", self.logs_command),
-            ("maintenance", self.maintenance_command),
-            ("announce", self.announce_command),
-            ("promote", self.promote_command),
-            ("demote", self.demote_command),
-            ("sysinfo", self.sysinfo_command)
-        ]
-        
-        for command, handler in admin_commands:
-            self.application.add_handler(CommandHandler(command, handler))
-        
-        # ========== GROUP COMMANDS ==========
-        group_commands = [
-            ("warn", self.warn_command),
-            ("mute", self.mute_command),
-            ("unmute", self.unmute_command),
-            ("rules", self.rules_command),
-            ("info", self.group_info_command),
-            ("members", self.members_command),
-            ("pin", self.pin_command),
-            ("unpin", self.unpin_command),
-            ("clean", self.clean_command),
-            ("welcome", self.welcome_command)
-        ]
-        
-        for command, handler in group_commands:
-            self.application.add_handler(CommandHandler(command, handler))
-        
         # ========== MESSAGE HANDLERS ==========
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_message))
-        self.application.add_handler(MessageHandler(filters.PHOTO, self.handle_photo_message))
-        self.application.add_handler(MessageHandler(filters.Sticker.ALL, self.handle_sticker_message))
         
         # ========== CALLBACK QUERY HANDLERS ==========
         self.application.add_handler(CallbackQueryHandler(self.handle_callback_query))
@@ -291,7 +308,7 @@ class RoastifyBot:
         # ========== ERROR HANDLER ==========
         self.application.add_error_handler(self.error_handler)
         
-        self.logger.info(f"✅ Registered {len(basic_commands) + len(admin_commands) + len(group_commands)} commands")
+        self.logger.info(f"✅ Registered {len(basic_commands)} commands")
     
     # ========== START COMMAND ==========
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -311,14 +328,6 @@ class RoastifyBot:
             [
                 InlineKeyboardButton("⚙️ Settings", callback_data="settings_menu"),
                 InlineKeyboardButton("🆘 Help", callback_data="help_menu")
-            ],
-            [
-                InlineKeyboardButton("📢 Join Channel", url="https://t.me/roastify_channel"),
-                InlineKeyboardButton("👥 Support Group", url="https://t.me/roastify_support")
-            ],
-            [
-                InlineKeyboardButton("⭐ Rate Bot", url="https://t.me/botfather"),
-                InlineKeyboardButton("💰 Donate", callback_data="donate_menu")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -326,16 +335,13 @@ class RoastifyBot:
         welcome_text = f"""
 <b>🎉 Welcome to Roastify Bot v3.0, {user.first_name}!</b> 🤖
 
-<u>Your ultimate roasting companion with <b>50+ commands</b>!</u>
+<u>Your ultimate roasting companion!</u>
 
 <code>✨ Key Features:</code>
 • 🎭 <b>Smart Roast Generation</b>
-• 🖼️ <b>Custom Roast Images</b>
-• 📊 <b>User Statistics & Leaderboards</b>
-• 🤖 <b>Auto Quotes & Memes</b>
-• ⚡ <b>24/7 Active</b>
-• 🔒 <b>Privacy Focused</b>
-• 🌐 <b>Multi-Language Support</b>
+• 📊 <b>User Statistics</b>
+• 🤖 <b>Auto Quotes & Jokes</b>
+• ⚡ <b>Fast & Easy</b>
 
 <code>📱 Quick Start:</code>
 • Use <code>/roast [name]</code> to roast someone
@@ -358,75 +364,29 @@ class RoastifyBot:
     
     # ========== HELP COMMAND ==========
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help command with categorized commands"""
+        """Handle /help command"""
         help_text = """
-<b>🤖 ROASTIFY BOT - COMPLETE COMMAND LIST 📚</b>
+<b>🤖 ROASTIFY BOT - COMMANDS 📚</b>
 
 <u><b>🎭 ROASTING COMMANDS:</b></u>
 <code>/roast [name]</code> - Create roast for someone
-<code>/roast_stats</code> - Your roasting statistics
-<code>/compliment [name]</code> - Give compliment (anti-roast)
-<code>/meme [text]</code> - Create meme with text
-<code>/create</code> - Interactive roast creation
 
 <u><b>📊 STATS & INFO:</b></u>
 <code>/stats</code> - Bot statistics
 <code>/profile</code> - Your profile
-<code>/leaderboard</code> - Top roasters
-<code>/quote_of_day</code> - Today's quote
-<code>/fact</code> - Random fact
-<code>/users</code> - User statistics (Admin)
 
 <u><b>🔄 CONTENT COMMANDS:</b></u>
 <code>/quote</code> - Random quote
 <code>/joke</code> - Random joke
-<code>/meme</code> - Random meme template
-<code>/fact</code> - Interesting fact
+<code>/fact</code> - Random fact
 
 <u><b>⚙️ UTILITY COMMANDS:</b></u>
-<code>/settings</code> - Bot settings
 <code>/invite</code> - Invite link
-<code>/support</code> - Support group
-<code>/feedback</code> - Send feedback
-<code>/donate</code> - Support development
-<code>/version</code> - Bot version
-<code>/changelog</code> - Update history
-<code>/tutorial</code> - How to use guide
-<code>/features</code> - All features list
-<code>/commands</code> - Command list
-<code>/language</code> - Change language
-<code>/theme</code> - Change theme
-<code>/notifications</code> - Notification settings
-<code>/privacy</code> - Privacy policy
-<code>/terms</code> - Terms of service
-
-<u><b>🛠️ ADMIN COMMANDS:</b></u>
-<code>/admin</code> - Admin panel
-<code>/broadcast</code> - Broadcast message
-<code>/users</code> - User statistics
-<code>/logs</code> - View logs
-<code>/backup</code> - Backup data
-<code>/restart</code> - Restart bot
-<code>/maintenance</code> - Maintenance mode
-<code>/announce</code> - Make announcement
-<code>/promote</code> - Promote user
-<code>/demote</code> - Demote user
-<code>/sysinfo</code> - System information
-
-<u><b>👥 GROUP COMMANDS:</b></u>
-<code>/warn @user</code> - Warn user
-<code>/mute @user</code> - Mute user
-<code>/rules</code> - Group rules
-<code>/info</code> - Group information
-<code>/members</code> - Group members
-<code>/pin [message]</code> - Pin message
-<code>/clean [amount]</code> - Clean messages
-<code>/welcome</code> - Welcome message
+<code>/support</code> - Support
 
 <u><b>📱 Quick Actions:</b></u>
 Use buttons for faster access!
-Type <code>/help [command]</code> for detailed help.
-Example: <code>/help roast</code>
+Example: <code>/roast John</code>
         """
         
         # English keyboard buttons
@@ -438,14 +398,6 @@ Example: <code>/help roast</code>
             [
                 InlineKeyboardButton("⚙️ Settings", callback_data="settings_menu"),
                 InlineKeyboardButton("🆘 Help Menu", callback_data="help_menu")
-            ],
-            [
-                InlineKeyboardButton("📢 Channel", url="https://t.me/roastify_channel"),
-                InlineKeyboardButton("👥 Support", url="https://t.me/roastify_support")
-            ],
-            [
-                InlineKeyboardButton("⭐ Rate", url="https://t.me/botfather"),
-                InlineKeyboardButton("💰 Donate", callback_data="donate_menu")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -481,19 +433,12 @@ Example: <code>/help roast</code>
         if context.args:
             target_name = ' '.join(context.args)
         else:
-            # Show name input keyboard
-            keyboard = [
-                [KeyboardButton("Use My Name")],
-                [KeyboardButton("Random Name"), KeyboardButton("Cancel")]
-            ]
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-            
             await update.message.reply_html(
-                "<b>👤 Who do you want to roast?</b>\n\n"
-                "Send me the name or use buttons below:",
-                reply_markup=reply_markup
+                "<b>👤 Please specify a name!</b>\n\n"
+                "Usage: <code>/roast [name]</code>\n"
+                "Example: <code>/roast John</code>"
             )
-            return NAME
+            return
         
         # Safety check
         if self.safety_checker and not self.safety_checker.is_safe(target_name):
@@ -510,15 +455,11 @@ Example: <code>/help roast</code>
         keyboard = [
             [
                 InlineKeyboardButton("🔄 Another Roast", callback_data=f"another_roast:{target_name}"),
-                InlineKeyboardButton("🖼️ Create Image", callback_data=f"create_image:{target_name}")
+                InlineKeyboardButton("😂 Share", callback_data=f"share_roast:{target_name}")
             ],
             [
                 InlineKeyboardButton("📊 My Stats", callback_data="my_stats"),
-                InlineKeyboardButton("🎭 Roast Someone Else", callback_data="roast_menu")
-            ],
-            [
-                InlineKeyboardButton("😂 Share to Group", callback_data=f"share_roast:{target_name}"),
-                InlineKeyboardButton("⭐ Save", callback_data=f"save_roast:{target_name}")
+                InlineKeyboardButton("🎭 New Roast", callback_data="new_roast")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -542,11 +483,6 @@ Example: <code>/help roast</code>
             f"{name}, তোমাকে দেখলে আইনস্টাইন তার থিওরি ভুলে যেত!",
             f"{name}, তোমার মতো মানুষ জন্মানোর আগে আল্লাহ একটু ভাবছিলেন কি করবেন!",
             f"{name}, তোমার বুদ্ধিমত্তা দেখলে ক্যালকুলেটরও হতাশ হয়!",
-            f"{name}, তোমার ফেসবুক প্রোফাইল দেখলে জুকারবার্গও লজ্জা পায়!",
-            f"{name}, তুমি যদি গুগল হোতা, তাহলে 'হাবা' সার্চ করলে তোমার ফটো আসতো!",
-            f"{name}, তোমার জীবন স্টোরিতে লাইক দিবে শুধু তোমার মা!",
-            f"{name}, তুমি জন্মেছিলে হাসানোর জন্য, কিন্তু এখন মানুষ কাঁদে তোমার বুদ্ধি দেখে!",
-            f"{name}, তোমার সম্পর্কে বলতে গেলে গুগল ম্যাপও হারিয়ে যায়!"
         ]
         
         return random.choice(roasts)
@@ -574,20 +510,10 @@ Example: <code>/help roast</code>
 • <b>Rate Limit:</b> {self.rate_limit}/min
 • <b>Daily Limit:</b> {self.daily_limit}/day
 
-<u>⚙️ System:</u>
-• <b>Database:</b> {'✅ Connected' if self.db else '❌ Disabled'}
-• <b>Safety Check:</b> {'✅ Active' if self.safety_checker else '❌ Disabled'}
-• <b>Image Gen:</b> {'✅ Active' if self.image_generator else '❌ Disabled'}
-• <b>Auto Quotes:</b> {'✅ Active' if self.auto_quote_system else '❌ Disabled'}
-
 <code>🔄 Last Updated: {datetime.now().strftime('%H:%M:%S')}</code>
         """
         
         keyboard = [
-            [
-                InlineKeyboardButton("📈 Detailed Stats", callback_data="detailed_stats"),
-                InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")
-            ],
             [
                 InlineKeyboardButton("🔄 Refresh", callback_data="refresh_stats"),
                 InlineKeyboardButton("📤 Export", callback_data="export_stats")
@@ -603,7 +529,7 @@ Example: <code>/help roast</code>
         user = update.effective_user
         user_id = user.id
         
-        # Get user stats (simulated)
+        # Get user stats
         total_roasts = self.roast_counters.get(user_id, 0)
         today_roasts = random.randint(1, 10)
         rank = random.randint(1, 100)
@@ -625,12 +551,6 @@ Example: <code>/help roast</code>
 • <b>Level:</b> {level}
 • <b>Roasts Left Today:</b> {max(0, self.daily_limit - today_roasts)}
 
-<u>🏆 Achievements:</u>
-• {'🥇 Top Roaster' if rank <= 10 else ''}
-• {'🔥 Streak Master' if today_roasts >= 5 else ''}
-• {'🎯 Accurate Roaster' if total_roasts >= 50 else ''}
-• {'⚡ Fast Roaster' if today_roasts >= self.daily_limit else ''}
-
 <code>📊 Profile created: {datetime.now().strftime('%H:%M')}</code>
         """
         
@@ -638,10 +558,6 @@ Example: <code>/help roast</code>
             [
                 InlineKeyboardButton("🎭 Create Roast", callback_data="create_roast"),
                 InlineKeyboardButton("📊 My Stats", callback_data="my_stats")
-            ],
-            [
-                InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard"),
-                InlineKeyboardButton("⚙️ Edit Profile", callback_data="edit_profile")
             ],
             [
                 InlineKeyboardButton("🔄 Refresh", callback_data="refresh_profile"),
@@ -661,18 +577,14 @@ Example: <code>/help roast</code>
             keyboard = [
                 [
                     InlineKeyboardButton("📜 Another Quote", callback_data="another_quote"),
-                    InlineKeyboardButton("💾 Save Quote", callback_data="save_quote")
-                ],
-                [
-                    InlineKeyboardButton("🎭 Create Roast", callback_data="create_roast"),
-                    InlineKeyboardButton("😂 Get Joke", callback_data="get_joke")
+                    InlineKeyboardButton("🎭 Create Roast", callback_data="create_roast")
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_html(quote, reply_markup=reply_markup)
         else:
-            await update.message.reply_html("<b>❌ Auto Quote System is disabled!</b>")
+            await update.message.reply_html("<b>❌ Quote system is disabled!</b>")
     
     async def joke_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /joke command"""
@@ -689,7 +601,7 @@ Example: <code>/help roast</code>
             
             await update.message.reply_html(joke, reply_markup=reply_markup)
         else:
-            await update.message.reply_html("<b>❌ Auto Quote System is disabled!</b>")
+            await update.message.reply_html("<b>❌ Joke system is disabled!</b>")
     
     async def fact_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /fact command"""
@@ -706,7 +618,7 @@ Example: <code>/help roast</code>
             
             await update.message.reply_html(fact, reply_markup=reply_markup)
         else:
-            await update.message.reply_html("<b>❌ Auto Quote System is disabled!</b>")
+            await update.message.reply_html("<b>❌ Fact system is disabled!</b>")
     
     # ========== UTILITY COMMANDS ==========
     async def invite_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -723,19 +635,6 @@ Invite Roastify Bot to your groups and share the fun with friends!
 • <b>Bot Link:</b> <code>{invite_link}</code>
 • <b>Direct Add:</b> <code>https://t.me/{bot_username}?startgroup=true</code>
 
-<u>👥 Group Benefits:</u>
-• 🎭 Fun roasting sessions
-• 📊 Group statistics
-• 🤖 Auto quotes & jokes
-• ⚡ Fast responses
-• 🔒 Privacy safe
-
-<u>📋 How to Add:</u>
-1. Click the button below
-2. Select your group
-3. Click 'Add to Group'
-4. Use /help in group
-
 <code>🤝 Share with friends!</code>
         """
         
@@ -743,10 +642,6 @@ Invite Roastify Bot to your groups and share the fun with friends!
             [
                 InlineKeyboardButton("📥 Add to Group", url=f"https://t.me/{bot_username}?startgroup=true"),
                 InlineKeyboardButton("👥 Share with Friends", callback_data="share_invite")
-            ],
-            [
-                InlineKeyboardButton("📢 Channel", url="https://t.me/roastify_channel"),
-                InlineKeyboardButton("🆘 Support", url="https://t.me/roastify_support")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -760,17 +655,6 @@ Invite Roastify Bot to your groups and share the fun with friends!
 
 Need help or have questions? Here's how you can get support:
 
-<u>📞 Contact Methods:</u>
-• <b>Support Group:</b> @roastify_support
-• <b>Channel:</b> @roastify_channel
-• <b>Developer:</b> @roastify_dev
-
-<u>📋 Common Issues:</u>
-• Bot not responding? Try /restart
-• Commands not working? Check /help
-• Getting errors? Report with /bug
-• Have suggestions? Use /suggestion
-
 <u>⚡ Quick Fixes:</u>
 1. Make sure bot has admin rights in groups
 2. Check your internet connection
@@ -778,98 +662,20 @@ Need help or have questions? Here's how you can get support:
 4. Clear chat and try again
 
 <u>🔧 Report Problems:</u>
-Use <code>/bug [description]</code> to report bugs
-Use <code>/suggestion [idea]</code> for suggestions
-Use <code>/feedback [message]</code> for feedback
+Contact the developer for support.
 
 <code>⏰ Response Time: Usually within 24 hours</code>
         """
         
         keyboard = [
             [
-                InlineKeyboardButton("👥 Support Group", url="https://t.me/roastify_support"),
-                InlineKeyboardButton("📢 Channel", url="https://t.me/roastify_channel")
-            ],
-            [
-                InlineKeyboardButton("🐛 Report Bug", callback_data="report_bug"),
-                InlineKeyboardButton("💡 Suggest Feature", callback_data="suggest_feature")
-            ],
-            [
-                InlineKeyboardButton("📝 Give Feedback", callback_data="give_feedback"),
-                InlineKeyboardButton("🔄 Restart Bot", callback_data="restart_bot")
+                InlineKeyboardButton("🔄 Restart Bot", callback_data="restart_bot"),
+                InlineKeyboardButton("📝 Give Feedback", callback_data="give_feedback")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_html(support_text, reply_markup=reply_markup)
-    
-    # ========== ADMIN COMMANDS ==========
-    async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /admin command"""
-        user_id = update.effective_user.id
-        
-        # Check if user is admin
-        if user_id not in self.config.get('ADMIN_IDS', []):
-            await update.message.reply_html("<b>❌ Access Denied!</b>\nYou are not authorized to use admin commands.")
-            return
-        
-        admin_text = """
-<b>🛠️ ADMIN PANEL</b>
-
-Welcome to the Roastify Bot Admin Panel. Here you can manage all bot functions.
-
-<u>📊 Statistics:</u>
-• Total Users: {total_users}
-• Total Roasts: {total_roasts}
-• Active Chats: {active_chats}
-• Uptime: {uptime}
-
-<u>⚙️ Management:</u>
-Use the buttons below to manage different aspects of the bot.
-
-<u>🔒 Security:</u>
-• Only authorized admins can access this panel
-• All actions are logged
-• Use with caution
-
-<code>🕒 Last updated: {time}</code>
-        """.format(
-            total_users=self.stats['total_users'],
-            total_roasts=self.stats['total_roasts'],
-            active_chats=len(self.stats['active_chats']),
-            uptime=str(datetime.now() - self.stats['start_time']).split('.')[0],
-            time=datetime.now().strftime('%H:%M:%S')
-        )
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("📊 User Stats", callback_data="admin_users"),
-                InlineKeyboardButton("🎭 Roast Stats", callback_data="admin_roasts")
-            ],
-            [
-                InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast"),
-                InlineKeyboardButton("📝 Announce", callback_data="admin_announce")
-            ],
-            [
-                InlineKeyboardButton("🔧 Maintenance", callback_data="admin_maintenance"),
-                InlineKeyboardButton("🔄 Restart", callback_data="admin_restart")
-            ],
-            [
-                InlineKeyboardButton("📁 Backup", callback_data="admin_backup"),
-                InlineKeyboardButton("📋 Logs", callback_data="admin_logs")
-            ],
-            [
-                InlineKeyboardButton("🚫 Ban User", callback_data="admin_ban"),
-                InlineKeyboardButton("✅ Unban User", callback_data="admin_unban")
-            ],
-            [
-                InlineKeyboardButton("📤 Export Data", callback_data="admin_export"),
-                InlineKeyboardButton("⚙️ Settings", callback_data="admin_settings")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_html(admin_text, reply_markup=reply_markup)
     
     # ========== CALLBACK QUERY HANDLER ==========
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -885,7 +691,7 @@ Use the buttons below to manage different aspects of the bot.
         elif data == "my_stats":
             await self.stats_command(update, context)
         elif data == "settings_menu":
-            await self.settings_command(update, context)
+            await update.callback_query.message.reply_html("<b>⚙️ Settings coming soon!</b>")
         elif data == "help_menu":
             await self.help_command(update, context)
         elif data == "quick_roast":
@@ -917,10 +723,6 @@ Use the buttons below to manage different aspects of the bot.
                 "<b>🌐 ভাষা বাংলায় সেট করা হয়েছে!</b>\n"
                 "সব মেসেজ এখন বাংলায় হবে।"
             )
-        elif data == "donate_menu":
-            await self.donate_command(update, context)
-        elif data == "leaderboard":
-            await self.leaderboard_command(update, context)
         elif data == "refresh_stats":
             await self.stats_command(update, context)
         elif data == "refresh_profile":
@@ -937,17 +739,6 @@ Use the buttons below to manage different aspects of the bot.
         """Handle text messages"""
         text = update.message.text
         user = update.effective_user
-        
-        # Check if message is a name for roasting (from conversation)
-        if 'roast' in context.user_data:
-            target_name = text
-            roast_text = self.generate_roast(target_name)
-            await update.message.reply_html(
-                f"<b>🔥 Roast for {target_name}:</b>\n\n"
-                f"<i>{roast_text}</i>"
-            )
-            del context.user_data['roast']
-            return
         
         # Handle other text messages
         if text.lower() in ['hi', 'hello', 'hey']:
@@ -1036,235 +827,6 @@ Use the buttons below to manage different aspects of the bot.
         
         self.logger.info(f"✅ Roast generated by {user_id} for {target_name}")
     
-    # ========== CONVERSATION HANDLERS ==========
-    async def create_roast_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Start roast creation conversation"""
-        await update.message.reply_html(
-            "<b>🎭 Create Custom Roast</b>\n\n"
-            "Please enter the name you want to roast:",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return NAME
-    
-    async def get_roast_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Get name for roast"""
-        context.user_data['name'] = update.message.text
-        
-        keyboard = [[KeyboardButton("Skip Photo"), KeyboardButton("Cancel")]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-        
-        await update.message.reply_html(
-            "<b>🖼️ Add Photo (Optional)</b>\n\n"
-            "Send a photo to include with the roast, or click 'Skip Photo':",
-            reply_markup=reply_markup
-        )
-        return PHOTO
-    
-    async def get_roast_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Get photo for roast"""
-        if update.message.text == "Skip Photo":
-            context.user_data['photo'] = None
-        elif update.message.photo:
-            context.user_data['photo'] = update.message.photo[-1].file_id
-        else:
-            await update.message.reply_html("Please send a photo or click 'Skip Photo'")
-            return PHOTO
-        
-        name = context.user_data['name']
-        has_photo = "Yes" if context.user_data.get('photo') else "No"
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Confirm", callback_data="confirm_create"),
-                InlineKeyboardButton("❌ Cancel", callback_data="cancel_create")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_html(
-            f"<b>📋 Confirm Roast Creation</b>\n\n"
-            f"<b>Name:</b> {name}\n"
-            f"<b>Photo:</b> {has_photo}\n\n"
-            f"Click Confirm to create the roast:",
-            reply_markup=reply_markup
-        )
-        return CONFIRM
-    
-    async def confirm_roast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Confirm and create roast"""
-        query = update.callback_query
-        await query.answer()
-        
-        if query.data == "confirm_create":
-            name = context.user_data['name']
-            roast_text = self.generate_roast(name)
-            
-            # Check if there's a photo
-            if context.user_data.get('photo'):
-                await query.message.reply_photo(
-                    photo=context.user_data['photo'],
-                    caption=f"<b>🔥 Roast for {name}:</b>\n\n<i>{roast_text}</i>",
-                    parse_mode='HTML'
-                )
-            else:
-                await query.message.reply_html(
-                    f"<b>🔥 Roast for {name}:</b>\n\n"
-                    f"<i>{roast_text}</i>"
-                )
-            
-            await query.message.reply_html(
-                "<b>✅ Roast created successfully!</b>\n"
-                "Use /roast_stats to see your roasting statistics."
-            )
-        else:
-            await query.message.reply_html("<b>❌ Roast creation cancelled!</b>")
-        
-        return ConversationHandler.END
-    
-    async def cancel_create(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Cancel roast creation"""
-        await update.message.reply_html(
-            "<b>❌ Roast creation cancelled!</b>",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ConversationHandler.END
-    
-    # ========== OTHER COMMAND STUBS (Placeholders) ==========
-    async def meme_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🎭 Meme feature coming soon!</b>")
-    
-    async def compliment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>💝 Compliment feature coming soon!</b>")
-    
-    async def quote_of_day_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📜 Quote of the day feature coming soon!</b>")
-    
-    async def roast_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📊 Roast stats feature coming soon!</b>")
-    
-    async def donate_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>💰 Donation feature coming soon!</b>")
-    
-    async def feedback_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📝 Feedback feature coming soon!</b>")
-    
-    async def changelog_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📋 Changelog feature coming soon!</b>")
-    
-    async def version_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>ℹ️ Version: Roastify Bot v3.0</b>")
-    
-    async def tutorial_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📚 Tutorial feature coming soon!</b>")
-    
-    async def features_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>✨ Features list coming soon!</b>")
-    
-    async def commands_list_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📜 Commands list coming soon!</b>")
-    
-    async def language_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🌐 Language selection coming soon!</b>")
-    
-    async def theme_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🎨 Theme selection coming soon!</b>")
-    
-    async def notifications_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🔔 Notifications settings coming soon!</b>")
-    
-    async def privacy_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🔒 Privacy policy coming soon!</b>")
-    
-    async def terms_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📄 Terms of service coming soon!</b>")
-    
-    async def report_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🚨 Report feature coming soon!</b>")
-    
-    async def bug_report_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🐛 Bug report feature coming soon!</b>")
-    
-    async def suggestion_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>💡 Suggestion feature coming soon!</b>")
-    
-    async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📢 Broadcast feature coming soon!</b>")
-    
-    async def ban_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🚫 Ban feature coming soon!</b>")
-    
-    async def unban_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>✅ Unban feature coming soon!</b>")
-    
-    async def users_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>👥 Users list coming soon!</b>")
-    
-    async def backup_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>💾 Backup feature coming soon!</b>")
-    
-    async def restart_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🔄 Restart feature coming soon!</b>")
-    
-    async def logs_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📋 Logs feature coming soon!</b>")
-    
-    async def maintenance_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🔧 Maintenance feature coming soon!</b>")
-    
-    async def announce_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📢 Announce feature coming soon!</b>")
-    
-    async def promote_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>⬆️ Promote feature coming soon!</b>")
-    
-    async def demote_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>⬇️ Demote feature coming soon!</b>")
-    
-    async def sysinfo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>💻 System info coming soon!</b>")
-    
-    async def warn_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>⚠️ Warn feature coming soon!</b>")
-    
-    async def mute_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🔇 Mute feature coming soon!</b>")
-    
-    async def unmute_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🔊 Unmute feature coming soon!</b>")
-    
-    async def rules_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📜 Rules feature coming soon!</b>")
-    
-    async def group_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>ℹ️ Group info coming soon!</b>")
-    
-    async def members_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>👥 Members list coming soon!</b>")
-    
-    async def pin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📌 Pin feature coming soon!</b>")
-    
-    async def unpin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>📌 Unpin feature coming soon!</b>")
-    
-    async def clean_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🧹 Clean feature coming soon!</b>")
-    
-    async def welcome_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>👋 Welcome feature coming soon!</b>")
-    
-    async def leaderboard_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🏆 Leaderboard feature coming soon!</b>")
-    
-    async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>⚙️ Settings feature coming soon!</b>")
-    
-    async def handle_photo_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>🖼️ Photo handling coming soon!</b>")
-    
-    async def handle_sticker_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_html("<b>😄 Sticker handling coming soon!</b>")
-    
     # ========== BOT STARTUP ==========
     async def start_bot(self):
         """Start the bot"""
@@ -1273,20 +835,15 @@ Use the buttons below to manage different aspects of the bot.
         await self.application.start()
         await self.application.updater.start_polling()
         
-        # Start auto quote system if available
-        if self.auto_quote_system and hasattr(self.auto_quote_system, 'start'):
-            self.auto_quote_system.start()
-        
         self.logger.info("✅ Roastify Bot is now running! Press Ctrl+C to stop.")
+        
+        # Keep running
+        import asyncio
+        await asyncio.Event().wait()
     
     async def stop_bot(self):
         """Stop the bot"""
         self.logger.info("🛑 Stopping Roastify Bot...")
-        
-        # Stop auto quote system
-        if self.auto_quote_system and hasattr(self.auto_quote_system, 'stop'):
-            self.auto_quote_system.stop()
-        
         await self.application.stop()
         await self.application.shutdown()
         self.logger.info("👋 Roastify Bot stopped successfully!")
@@ -1302,9 +859,6 @@ def main():
         import asyncio
         loop = asyncio.get_event_loop()
         loop.run_until_complete(bot.start_bot())
-        
-        # Keep running
-        loop.run_forever()
         
     except KeyboardInterrupt:
         print("\n🛑 Bot stopped by user")
