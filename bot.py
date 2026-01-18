@@ -9,7 +9,7 @@ import sys
 import asyncio
 import random
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from io import BytesIO
 
@@ -77,9 +77,11 @@ class RoastifyBot:
             self.mention_system = MentionSystem()
             self.reaction_system = ReactionSystem()
             self.admin_protection = AdminProtection()
-            self.auto_quotes = AutoQuotes(self, self.quote_system)
             self.sticker_maker = StickerMaker()
             self.quote_of_day = QuoteOfDay()
+            
+            # Initialize AutoQuotes without quote_system parameter
+            self.auto_quotes = AutoQuotes(self)
             
             # Initialize database
             init_database()
@@ -243,6 +245,34 @@ class RoastifyBot:
                 "system": ["সিস্টেম", "পদ্ধতি", "ব্যবস্থা", "যন্ত্র"],
                 "error": ["এরর", "ত্রুটি", "ভুল", "সমস্যা"],
                 "recovering": ["রিকভারিং", "পুনরুদ্ধার", "সামলে নিচ্ছি", "ঠিক করছি"],
+                "here": ["এখানে", "এইখানে", "এটি", "এইটা"],
+                "is": ["হল", "হচ্ছে", "হয়", "আছে"],
+                "your": ["আপনার", "তোমার", "তোমাদের", "তাদের"],
+                "delivered": ["পৌঁছে দেওয়া", "ডেলিভারড", "প্রদান করা", "পাঠানো"],
+                "fresh": ["তাজা", "ফ্রেশ", "নতুন", "সদ্য"],
+                "one": ["একটি", "একটা", "এক", "টি"],
+                "active": ["সক্রিয়", "অ্যাকটিভ", "চালু", "জীবন্ত"],
+                "rank": ["র‍্যাংক", "স্থান", "পদ", "মর্যাদাক্রম"],
+                "last": ["শেষ", "লাস্ট", "অন্তিম", "সর্বশেষ"],
+                "normal": ["স্বাভাবিক", "নরমাল", "সাধারণ", "প্রকৃতিস্থ"],
+                "usage": ["ব্যবহার", "ইউজেজ", "প্রয়োগ", "ব্যয়"],
+                "owner": ["মালিক", "ওনার", "স্বত্ত্বাধিকারী", "প্রভু"],
+                "images": ["ইমেজ", "ছবি", "চিত্র", "ফটো"],
+                "uptime": ["চালু সময়", "আপটাইম", "কার্যকাল", "সক্রিয় সময়"],
+                "version": ["ভার্সন", "সংস্করণ", "প্রকাশ", "অধিষ্ঠাপন"],
+                "reply": ["উত্তর", "রিপ্লাই", "জবাব", "প্রত্যুত্তর"],
+                "image": ["ইমেজ", "ছবি", "চিত্র", "প্রতিচ্ছবি"],
+                "cooldown": ["কুলডাউন", "শীতলীকরণ", "বিরতি", "অপেক্ষা"],
+                "fast": ["দ্রুত", "ফাস্ট", "তাড়াতাড়ি", "শীঘ্র"],
+                "slow": ["ধীর", "স্লো", "মন্থর", "আস্তে"],
+                "down": ["নিচে", "ডাউন", "অধোগামী", "বন্ধ"],
+                "bit": ["বিট", "টুকরা", "অংশ", "খানিকটা"],
+                "users": ["ব্যবহারকারী", "ইউজার", "সদস্য", "অংশগ্রহণকারী"],
+                "today": ["আজ", "টুডে", "অদ্য", "বর্তমান দিন"],
+                "start": ["শুরু", "স্টার্ট", "আরম্ভ", "প্রবর্তন"],
+                "rank": ["র‍্যাংক", "স্থান", "পদ", "ক্রম"],
+                "help": ["সাহায্য", "হেল্প", "সহায়তা", "উপকার"],
+                "owner": ["মালিক", "ওনার", "স্বত্ত্বাধিকারী", "প্রভু"],
             }
             
             logger.info("✅ RoastifyBot Advanced HTML Version initialized")
@@ -252,6 +282,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Failed to initialize bot: {e}")
+            traceback.print_exc()
             raise
     
     # ==================== RANDOM HTML HELPER METHODS ====================
@@ -372,23 +403,29 @@ class RoastifyBot:
             
             # Create welcome image
             try:
-                image = self.image_generator.create_roast_image(
-                    primary_text=f"{self._get_random_word('welcome')} {user.first_name}!",
-                    secondary_text=f"{self._get_random_word('ready')} {self._get_random_word('roast')}? 😈",
-                    user_id=user.id,
-                    style="welcome"
-                )
-                
-                if image:
-                    # Convert to bytes
-                    image_bytes = self.image_generator.image_to_bytes(image)
-                    
-                    await context.bot.send_photo(
-                        chat_id=chat.id,
-                        photo=image_bytes,
-                        caption=welcome_html,
-                        parse_mode=ParseMode.HTML
+                if hasattr(self.image_generator, 'create_roast_image'):
+                    image = self.image_generator.create_roast_image(
+                        primary_text=f"{self._get_random_word('welcome')} {user.first_name}!",
+                        secondary_text=f"{self._get_random_word('ready')} {self._get_random_word('roast')}? 😈",
+                        user_id=user.id,
+                        style="welcome"
                     )
+                    
+                    if image:
+                        # Convert to bytes
+                        if hasattr(self.image_generator, 'image_to_bytes'):
+                            image_bytes = self.image_generator.image_to_bytes(image)
+                            
+                            await context.bot.send_photo(
+                                chat_id=chat.id,
+                                photo=image_bytes,
+                                caption=welcome_html,
+                                parse_mode=ParseMode.HTML
+                            )
+                        else:
+                            await update.message.reply_text(welcome_html, parse_mode=ParseMode.HTML)
+                    else:
+                        await update.message.reply_text(welcome_html, parse_mode=ParseMode.HTML)
                 else:
                     await update.message.reply_text(welcome_html, parse_mode=ParseMode.HTML)
                     
@@ -401,6 +438,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_start: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "start")
     
     async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -472,6 +510,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_help: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "help")
     
     async def handle_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -479,54 +518,67 @@ class RoastifyBot:
         try:
             user = update.effective_user
             
-            # Get user stats from database
-            with StorageManager.get_session() as db:
-                user_record = db.query(User).filter(User.user_id == user.id).first()
+            # Get user stats from database using proper session handling
+            try:
+                from sqlalchemy.orm import Session
+                from database.models import get_session
                 
-                if user_record:
-                    # Calculate rank
-                    rank = self._get_user_rank(user.id)
+                with get_session() as session:
+                    user_record = session.query(User).filter(User.user_id == user.id).first()
                     
-                    # Random stat variations
-                    stat_variations = [
-                        f"📊 {user.first_name}'র {self._get_random_word('stats')}",
-                        f"📈 {self._get_random_word('performance')} {self._get_random_word('report')}",
-                        f"🎯 {user.first_name}'র {self._get_random_word('analytics')}",
-                        f"📋 {self._get_random_word('user')} {self._get_random_word('stats')}",
-                        f"🔍 {self._get_random_word('insights')} {self._get_random_word('for')} {user.first_name}"
-                    ]
-                    
-                    stats_html = self._format_random_html_message(
-                        title=random.choice(stat_variations),
-                        content=(
-                            f"• {self._get_random_word('total')} {self._get_random_word('roasts')}: <code>{user_record.roast_count}</code>\n"
-                            f"• {self._get_random_word('total')} {self._get_random_word('votes')}: <code>{user_record.vote_count}</code>\n"
-                            f"• {self._get_random_word('reactions')}: <code>{user_record.reaction_count}</code>\n"
-                            f"• {self._get_random_word('joined')}: <code>{TimeManager.format_time(user_record.created_at)}</code>\n"
-                            f"• {self._get_random_word('last')} {self._get_random_word('active')}: <code>{TimeManager.format_time(user_record.last_active)}</code>\n\n"
-                            
-                            f"🏆 {self._get_random_word('rank')}: <code>#{rank}</code>\n"
-                            f"🔥 {self._get_random_word('activity')}: <code>{self._get_random_word('active') if rank <= 100 else self._get_random_word('normal')}</code>"
-                        ),
-                        footer=f"📅 {self._get_random_word('updated')}: {TimeManager.format_time()}",
-                        add_border=True
-                    )
-                else:
-                    stats_html = self._format_random_html_message(
-                        title=random.choice(["stats", "analytics", "data", "information"]),
-                        content=(
-                            f"📊 {self._get_random_word('stats')} {self._get_random_word('not')} {self._get_random_word('found')}!\n\n"
-                            f"{self._get_random_word('you')} {self._get_random_word('havent')} {self._get_random_word('received')} {self._get_random_word('any')} {self._get_random_word('roasts')} {self._get_random_word('yet')}!\n"
-                            f"{self._get_random_word('send')} {self._get_random_word('a')} {self._get_random_word('message')} {self._get_random_word('to')} {self._get_random_word('get')} {self._get_random_word('started')}."
-                        ),
-                        footer=f"🚀 {self._get_random_word('start')}: /roast",
-                        add_border=True
-                    )
+                    if user_record:
+                        # Calculate rank
+                        rank = self._get_user_rank(user.id)
+                        
+                        # Random stat variations
+                        stat_variations = [
+                            f"📊 {user.first_name}'র {self._get_random_word('stats')}",
+                            f"📈 {self._get_random_word('performance')} {self._get_random_word('report')}",
+                            f"🎯 {user.first_name}'র {self._get_random_word('analytics')}",
+                            f"📋 {self._get_random_word('user')} {self._get_random_word('stats')}",
+                            f"🔍 {self._get_random_word('insights')} {self._get_random_word('for')} {user.first_name}"
+                        ]
+                        
+                        stats_html = self._format_random_html_message(
+                            title=random.choice(stat_variations),
+                            content=(
+                                f"• {self._get_random_word('total')} {self._get_random_word('roasts')}: <code>{user_record.roast_count}</code>\n"
+                                f"• {self._get_random_word('total')} {self._get_random_word('votes')}: <code>{user_record.vote_count}</code>\n"
+                                f"• {self._get_random_word('reactions')}: <code>{user_record.reaction_count}</code>\n"
+                                f"• {self._get_random_word('joined')}: <code>{TimeManager.format_time(user_record.created_at)}</code>\n"
+                                f"• {self._get_random_word('last')} {self._get_random_word('active')}: <code>{TimeManager.format_time(user_record.last_active)}</code>\n\n"
+                                
+                                f"🏆 {self._get_random_word('rank')}: <code>#{rank}</code>\n"
+                                f"🔥 {self._get_random_word('activity')}: <code>{self._get_random_word('active') if rank <= 100 else self._get_random_word('normal')}</code>"
+                            ),
+                            footer=f"📅 {self._get_random_word('updated')}: {TimeManager.format_time()}",
+                            add_border=True
+                        )
+                    else:
+                        stats_html = self._format_random_html_message(
+                            title=random.choice(["stats", "analytics", "data", "information"]),
+                            content=(
+                                f"📊 {self._get_random_word('stats')} {self._get_random_word('not')} {self._get_random_word('found')}!\n\n"
+                                f"{self._get_random_word('you')} {self._get_random_word('havent')} {self._get_random_word('received')} {self._get_random_word('any')} {self._get_random_word('roasts')} {self._get_random_word('yet')}!\n"
+                                f"{self._get_random_word('send')} {self._get_random_word('a')} {self._get_random_word('message')} {self._get_random_word('to')} {self._get_random_word('get')} {self._get_random_word('started')}."
+                            ),
+                            footer=f"🚀 {self._get_random_word('start')}: /roast",
+                            add_border=True
+                        )
+            except Exception as db_error:
+                log_error(f"Database error in handle_stats: {db_error}")
+                stats_html = self._format_random_html_message(
+                    title="ডাটাবেস এরর",
+                    content="ডাটাবেস এক্সেস করতে সমস্যা হচ্ছে। দয়া করে পরে আবার চেষ্টা করুন।",
+                    footer="🔧 সিস্টেম মেইনটেন্যান্স",
+                    add_border=True
+                )
             
             await update.message.reply_text(stats_html, parse_mode=ParseMode.HTML)
             
         except Exception as e:
             log_error(f"Error in handle_stats: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "stats")
     
     async def handle_roast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -545,95 +597,115 @@ class RoastifyBot:
             )
             
             # Create and send image
-            image = self.image_generator.create_roast_image(
-                primary_text=roast_data["primary"],
-                secondary_text=f"{user.first_name}'র রোস্ট | /roast",
-                user_id=user.id,
-                style="random"
-            )
-            
-            if image:
-                image_bytes = self.image_generator.image_to_bytes(image)
-                
-                # Random captions
-                captions = [
-                    f"🔥 {self._get_random_word('here')} {self._get_random_word('is')} {self._get_random_word('your')} {self._get_random_word('roast')}!",
-                    f"🎯 {self._get_random_word('roast')} {self._get_random_word('delivered')}!",
-                    f"⚡ {self._get_random_word('fresh')} {self._get_random_word('roast')} {self._get_random_word('for')} {user.first_name}!",
-                    f"😈 {self._get_random_word('enjoy')} {self._get_random_word('this')} {self._get_random_word('one')}!",
-                    f"💀 {self._get_random_word('savage')} {self._get_random_word('mode')} {self._get_random_word('activated')}!"
-                ]
-                
-                sent_message = await context.bot.send_photo(
-                    chat_id=chat.id,
-                    photo=image_bytes,
-                    caption=random.choice(captions),
-                    parse_mode=ParseMode.HTML
-                )
-                
-                # Add vote buttons
-                await self.vote_system.add_vote_to_message(
-                    update, context, sent_message.message_id, chat.id
-                )
-                
-                self.stats['images_sent'] += 1
-                self.stats['total_roasts'] += 1
-                
-                # Update database
-                StorageManager.get_or_create_user(
+            if hasattr(self.image_generator, 'create_roast_image'):
+                image = self.image_generator.create_roast_image(
+                    primary_text=roast_data["primary"],
+                    secondary_text=f"{user.first_name}'র রোস্ট | /roast",
                     user_id=user.id,
-                    username=user.username,
-                    first_name=user.first_name,
-                    last_name=user.last_name
+                    style="random"
                 )
                 
-                StorageManager.increment_user_roast_count(user.id)
-                
-                logger.info(f"Command roast for user {user.id}")
-                
+                if image and hasattr(self.image_generator, 'image_to_bytes'):
+                    image_bytes = self.image_generator.image_to_bytes(image)
+                    
+                    # Random captions
+                    captions = [
+                        f"🔥 {self._get_random_word('here')} {self._get_random_word('is')} {self._get_random_word('your')} {self._get_random_word('roast')}!",
+                        f"🎯 {self._get_random_word('roast')} {self._get_random_word('delivered')}!",
+                        f"⚡ {self._get_random_word('fresh')} {self._get_random_word('roast')} {self._get_random_word('for')} {user.first_name}!",
+                        f"😈 {self._get_random_word('enjoy')} {self._get_random_word('this')} {self._get_random_word('one')}!",
+                        f"💀 {self._get_random_word('savage')} {self._get_random_word('mode')} {self._get_random_word('activated')}!"
+                    ]
+                    
+                    sent_message = await context.bot.send_photo(
+                        chat_id=chat.id,
+                        photo=image_bytes,
+                        caption=random.choice(captions),
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                    # Add vote buttons
+                    if hasattr(self.vote_system, 'add_vote_to_message'):
+                        await self.vote_system.add_vote_to_message(
+                            update, context, sent_message.message_id, chat.id
+                        )
+                    
+                    self.stats['images_sent'] += 1
+                    self.stats['total_roasts'] += 1
+                    
+                    # Update database
+                    StorageManager.get_or_create_user(
+                        user_id=user.id,
+                        username=user.username,
+                        first_name=user.first_name,
+                        last_name=user.last_name
+                    )
+                    
+                    StorageManager.increment_user_roast_count(user.id)
+                    
+                    logger.info(f"Command roast for user {user.id}")
+                    
+                else:
+                    # Fallback text response
+                    await update.message.reply_text(
+                        f"🔥 *রোস্ট টাইম!*\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}\n\n{roast_data.get('secondary', '')}",
+                        parse_mode=ParseMode.HTML
+                    )
             else:
-                # Fallback text response
+                # Fallback if image generator not available
                 await update.message.reply_text(
-                    f"🔥 *রোস্ট টাইম!*\n\n{roast_data['primary']}\n\n{roast_data['secondary']}",
+                    f"🔥 *রোস্ট টাইম!*\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}\n\n{roast_data.get('secondary', '')}",
                     parse_mode=ParseMode.HTML
                 )
             
         except Exception as e:
             log_error(f"Error in handle_roast_command: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "roast")
     
     async def handle_leaderboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """/leaderboard command"""
         try:
             # Get leaderboard from database
-            with StorageManager.get_session() as db:
-                top_users = db.query(User).order_by(User.roast_count.desc()).limit(10).all()
-            
-            if not top_users:
-                leaderboard_html = self._format_random_html_message(
-                    title=self._get_random_word("leaderboard"),
-                    content="😴 এখনো কেউ রোস্ট করেনি! প্রথম হওয়ার সুযোগ নিন!",
-                    footer=f"🚀 {self._get_random_word('start')}: /roast",
-                    add_border=True
-                )
-            else:
-                # Create leaderboard text
-                leaderboard_text = ""
-                medals = ["🥇", "🥈", "🥉", "4.", "5.", "6.", "7.", "8.", "9.", "10."]
+            try:
+                from database.models import get_session
                 
-                for i, user in enumerate(top_users):
-                    if i < 3:
-                        medal = medals[i]
-                    else:
-                        medal = medals[i]
+                with get_session() as session:
+                    top_users = session.query(User).order_by(User.roast_count.desc()).limit(10).all()
+                
+                if not top_users:
+                    leaderboard_html = self._format_random_html_message(
+                        title=self._get_random_word("leaderboard"),
+                        content="😴 এখনো কেউ রোস্ট করেনি! প্রথম হওয়ার সুযোগ নিন!",
+                        footer=f"🚀 {self._get_random_word('start')}: /roast",
+                        add_border=True
+                    )
+                else:
+                    # Create leaderboard text
+                    leaderboard_text = ""
+                    medals = ["🥇", "🥈", "🥉", "4.", "5.", "6.", "7.", "8.", "9.", "10."]
                     
-                    username = user.username or f"User_{user.user_id}"
-                    leaderboard_text += f"{medal} {username} - <code>{user.roast_count}</code> রোস্ট\n"
-                
+                    for i, user in enumerate(top_users):
+                        if i < 3:
+                            medal = medals[i]
+                        else:
+                            medal = medals[i]
+                        
+                        username = user.username or f"User_{user.user_id}"
+                        leaderboard_text += f"{medal} {username} - <code>{user.roast_count}</code> রোস্ট\n"
+                    
+                    leaderboard_html = self._format_random_html_message(
+                        title=random.choice(["🏆 লিডারবোর্ড", "🔥 টপ রোস্টার", "🎯 শীর্ষ খেলোয়াড়", "⭐ সেরা সদস্য"]),
+                        content=leaderboard_text,
+                        footer=f"📊 {self._get_random_word('updated')}: {TimeManager.format_time()}",
+                        add_border=True
+                    )
+            except Exception as db_error:
+                log_error(f"Database error in handle_leaderboard: {db_error}")
                 leaderboard_html = self._format_random_html_message(
-                    title=random.choice(["🏆 লিডারবোর্ড", "🔥 টপ রোস্টার", "🎯 শীর্ষ খেলোয়াড়", "⭐ সেরা সদস্য"]),
-                    content=leaderboard_text,
-                    footer=f"📊 {self._get_random_word('updated')}: {TimeManager.format_time()}",
+                    title="ডাটাবেস এরর",
+                    content="লিডারবোর্ড লোড করতে সমস্যা হচ্ছে।",
+                    footer="🔧 সিস্টেম মেইনটেন্যান্স",
                     add_border=True
                 )
             
@@ -641,6 +713,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_leaderboard: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "leaderboard")
     
     async def handle_quote(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -660,6 +733,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_quote: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "quote")
     
     async def handle_ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -706,6 +780,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_ping: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "ping")
     
     async def handle_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -742,6 +817,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_info: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "info")
     
     async def handle_sticker(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -762,24 +838,35 @@ class RoastifyBot:
                 return
             
             # Create sticker
-            sticker_file = await self.sticker_maker.create_sticker_from_message(
-                update.message.reply_to_message
-            )
-            
-            if sticker_file:
-                await context.bot.send_sticker(
-                    chat_id=update.effective_chat.id,
-                    sticker=sticker_file
+            if hasattr(self.sticker_maker, 'create_sticker_from_message'):
+                sticker_file = await self.sticker_maker.create_sticker_from_message(
+                    update.message.reply_to_message
                 )
                 
-                self.stats['stickers_created'] += 1
-                logger.info(f"Sticker created for user {user.id}")
+                if sticker_file:
+                    await context.bot.send_sticker(
+                        chat_id=update.effective_chat.id,
+                        sticker=sticker_file
+                    )
+                    
+                    self.stats['stickers_created'] += 1
+                    logger.info(f"Sticker created for user {user.id}")
+                else:
+                    await update.message.reply_text(
+                        self._format_random_html_message(
+                            title="❌ স্টিকার তৈরি",
+                            content=f"স্টিকার তৈরি করতে সমস্যা হয়েছে! দয়া করে আবার চেষ্টা করুন।",
+                            footer=f"🔄 {self._get_random_word('retry')}",
+                            add_border=True
+                        ),
+                        parse_mode=ParseMode.HTML
+                    )
             else:
                 await update.message.reply_text(
                     self._format_random_html_message(
                         title="❌ স্টিকার তৈরি",
-                        content=f"স্টিকার তৈরি করতে সমস্যা হয়েছে! দয়া করে আবার চেষ্টা করুন।",
-                        footer=f"🔄 {self._get_random_word('retry')}",
+                        content=f"স্টিকার মেকার সিস্টেম পাওয়া যায়নি!",
+                        footer=f"🔧 সিস্টেম মেইনটেন্যান্স",
                         add_border=True
                     ),
                     parse_mode=ParseMode.HTML
@@ -787,6 +874,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_sticker: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "sticker")
     
     # ==================== TEXT MESSAGE HANDLER ====================
@@ -801,12 +889,14 @@ class RoastifyBot:
             self.stats['total_messages'] += 1
             
             # Check admin protection
-            if await self.admin_protection.check_and_protect(update, context):
-                return
+            if hasattr(self.admin_protection, 'check_and_protect'):
+                if await self.admin_protection.check_and_protect(update, context):
+                    return
             
             # Check for mentions
-            if await self.mention_system.handle_mention(update, context):
-                return
+            if hasattr(self.mention_system, 'handle_mention'):
+                if await self.mention_system.handle_mention(update, context):
+                    return
             
             # Validate input
             if not self._validate_user_input(message.text, user.id, chat.id):
@@ -850,46 +940,59 @@ class RoastifyBot:
             random_style = random.choice(image_styles)
             
             # Create and send image with random variations
-            image = self.image_generator.create_roast_image(
-                primary_text=roast_data["primary"],
-                secondary_text=roast_data["secondary"],
-                user_id=user.id,
-                style=random_style
-            )
-            
-            if image:
-                image_bytes = self.image_generator.image_to_bytes(image)
-                
-                # Random captions
-                captions = [
-                    f"🔥 {self._get_random_word('here')} {self._get_random_word('is')} {self._get_random_word('your')} {self._get_random_word('roast')}!",
-                    f"🎯 {self._get_random_word('roast')} {self._get_random_word('delivered')}!",
-                    f"⚡ {self._get_random_word('fresh')} {self._get_random_word('roast')} {self._get_random_word('for')} {user.first_name}!",
-                    f"😈 {self._get_random_word('enjoy')} {self._get_random_word('this')} {self._get_random_word('one')}!",
-                    f"💀 {self._get_random_word('savage')} {self._get_random_word('mode')} {self._get_random_word('activated')}!"
-                ]
-                
-                sent_message = await context.bot.send_photo(
-                    chat_id=chat.id,
-                    photo=image_bytes,
-                    caption=random.choice(captions),
-                    reply_to_message_id=message.message_id,
-                    parse_mode=ParseMode.HTML
+            if hasattr(self.image_generator, 'create_roast_image'):
+                image = self.image_generator.create_roast_image(
+                    primary_text=roast_data.get("primary", "রোস্ট জেনারেট করতে সমস্যা!"),
+                    secondary_text=roast_data.get("secondary", ""),
+                    user_id=user.id,
+                    style=random_style
                 )
                 
-                # Add vote buttons with random text
-                await self.vote_system.add_vote_to_message(
-                    update, context, sent_message.message_id, chat.id
-                )
-                
-                self.stats['images_sent'] += 1
+                if image and hasattr(self.image_generator, 'image_to_bytes'):
+                    image_bytes = self.image_generator.image_to_bytes(image)
+                    
+                    # Random captions
+                    captions = [
+                        f"🔥 {self._get_random_word('here')} {self._get_random_word('is')} {self._get_random_word('your')} {self._get_random_word('roast')}!",
+                        f"🎯 {self._get_random_word('roast')} {self._get_random_word('delivered')}!",
+                        f"⚡ {self._get_random_word('fresh')} {self._get_random_word('roast')} {self._get_random_word('for')} {user.first_name}!",
+                        f"😈 {self._get_random_word('enjoy')} {self._get_random_word('this')} {self._get_random_word('one')}!",
+                        f"💀 {self._get_random_word('savage')} {self._get_random_word('mode')} {self._get_random_word('activated')}!"
+                    ]
+                    
+                    sent_message = await context.bot.send_photo(
+                        chat_id=chat.id,
+                        photo=image_bytes,
+                        caption=random.choice(captions),
+                        reply_to_message_id=message.message_id,
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+                    # Add vote buttons with random text
+                    if hasattr(self.vote_system, 'add_vote_to_message'):
+                        await self.vote_system.add_vote_to_message(
+                            update, context, sent_message.message_id, chat.id
+                        )
+                    
+                    self.stats['images_sent'] += 1
+                else:
+                    # Fallback text response with random variation
+                    fallback_responses = [
+                        f"🔥 *{random_category} রোস্ট!*\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}\n\n{roast_data.get('secondary', '')}",
+                        f"🎯 {self._get_random_word('roast')} {self._get_random_word('time')}!\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}",
+                        f"⚡ {user.first_name}'র {self._get_random_word('roast')}:\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}",
+                        f"😈 {self._get_random_word('here')} {self._get_random_word('we')} {self._get_random_word('go')}:\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}"
+                    ]
+                    
+                    await update.message.reply_text(
+                        random.choice(fallback_responses),
+                        parse_mode=ParseMode.HTML
+                    )
             else:
-                # Fallback text response with random variation
+                # Fallback if image generator not available
                 fallback_responses = [
-                    f"🔥 *{random_category} রোস্ট!*\n\n{roast_data['primary']}\n\n{roast_data['secondary']}",
-                    f"🎯 {self._get_random_word('roast')} {self._get_random_word('time')}!\n\n{roast_data['primary']}",
-                    f"⚡ {user.first_name}'র {self._get_random_word('roast')}:\n\n{roast_data['primary']}",
-                    f"😈 {self._get_random_word('here')} {self._get_random_word('we')} {self._get_random_word('go')}:\n\n{roast_data['primary']}"
+                    f"🔥 *{random_category} রোস্ট!*\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}\n\n{roast_data.get('secondary', '')}",
+                    f"🎯 {self._get_random_word('roast')} {self._get_random_word('time')}!\n\n{roast_data.get('primary', 'রোস্ট জেনারেট করতে সমস্যা!')}",
                 ]
                 
                 await update.message.reply_text(
@@ -908,7 +1011,7 @@ class RoastifyBot:
             StorageManager.log_roast(
                 user_id=user.id,
                 input_text=message.text[:200],
-                roast_type=roast_data["category"],
+                roast_type=roast_data.get("category", "general"),
                 template_used=random_style,
                 chat_id=chat.id
             )
@@ -916,7 +1019,8 @@ class RoastifyBot:
             StorageManager.increment_user_roast_count(user.id)
             
             # Add random auto-reactions
-            await self.reaction_system.analyze_and_react(update, context)
+            if hasattr(self.reaction_system, 'analyze_and_react'):
+                await self.reaction_system.analyze_and_react(update, context)
             
             self.stats['total_roasts'] += 1
             
@@ -925,6 +1029,7 @@ class RoastifyBot:
         except Exception as e:
             self.stats['total_errors'] += 1
             log_error(f"Error in handle_text_message: {e}")
+            traceback.print_exc()
             
             # Random error messages
             error_variations = [
@@ -961,36 +1066,57 @@ class RoastifyBot:
                 return
             
             # Get admin stats
-            with StorageManager.get_session() as db:
-                total_users = db.query(User).count()
-                total_roasts = db.query(Roast).count()
-                active_today = db.query(User).filter(
-                    User.last_active >= TimeManager.get_current_time().replace(hour=0, minute=0, second=0)
-                ).count()
-            
-            admin_html = self._format_random_html_message(
-                title="👑 অ্যাডমিন প্যানেল",
-                content=(
-                    f"📊 <u>সিস্টেম স্ট্যাটস:</u>\n"
-                    f"• {self._get_random_word('total')} {self._get_random_word('users')}: <code>{total_users}</code>\n"
-                    f"• {self._get_random_word('total')} {self._get_random_word('roasts')}: <code>{total_roasts}</code>\n"
-                    f"• {self._get_random_word('active')} {self._get_random_word('today')}: <code>{active_today}</code>\n"
-                    f"• {self._get_random_word('bot')} {self._get_random_word('messages')}: <code>{self.stats['total_messages']}</code>\n\n"
-                    
-                    f"⚡ <u>অ্যাডমিন কমান্ডস:</u>\n"
-                    f"/broadcast - বার্তা পাঠান\n"
-                    f"/stats_full - বিস্তারিত স্ট্যাটস\n"
-                    f"/cleanup - ডাটাবেস ক্লিনআপ\n"
-                    f"/info - বট ইনফো"
-                ),
-                footer=f"🤖 {self._get_random_word('bot')}: @{Config.BOT_USERNAME}",
-                add_border=True
-            )
+            try:
+                from database.models import get_session
+                
+                with get_session() as session:
+                    total_users = session.query(User).count()
+                    total_roasts = session.query(Roast).count()
+                    active_today = session.query(User).filter(
+                        User.last_active >= TimeManager.get_current_time().replace(hour=0, minute=0, second=0)
+                    ).count()
+                
+                admin_html = self._format_random_html_message(
+                    title="👑 অ্যাডমিন প্যানেল",
+                    content=(
+                        f"📊 <u>সিস্টেম স্ট্যাটস:</u>\n"
+                        f"• {self._get_random_word('total')} {self._get_random_word('users')}: <code>{total_users}</code>\n"
+                        f"• {self._get_random_word('total')} {self._get_random_word('roasts')}: <code>{total_roasts}</code>\n"
+                        f"• {self._get_random_word('active')} {self._get_random_word('today')}: <code>{active_today}</code>\n"
+                        f"• {self._get_random_word('bot')} {self._get_random_word('messages')}: <code>{self.stats['total_messages']}</code>\n\n"
+                        
+                        f"⚡ <u>অ্যাডমিন কমান্ডস:</u>\n"
+                        f"/broadcast - বার্তা পাঠান\n"
+                        f"/stats_full - বিস্তারিত স্ট্যাটস\n"
+                        f"/cleanup - ডাটাবেস ক্লিনআপ\n"
+                        f"/info - বট ইনফো"
+                    ),
+                    footer=f"🤖 {self._get_random_word('bot')}: @{Config.BOT_USERNAME}",
+                    add_border=True
+                )
+            except Exception as db_error:
+                log_error(f"Database error in handle_admin: {db_error}")
+                admin_html = self._format_random_html_message(
+                    title="👑 অ্যাডমিন প্যানেল",
+                    content=(
+                        f"📊 <u>সিস্টেম স্ট্যাটস:</u>\n"
+                        f"• ডাটাবেস অ্যাক্সেস এরর\n"
+                        f"• বট মেসেজ: <code>{self.stats['total_messages']}</code>\n"
+                        f"• বট রোস্ট: <code>{self.stats['total_roasts']}</code>\n\n"
+                        
+                        f"⚡ <u>অ্যাডমিন কমান্ডস:</u>\n"
+                        f"/broadcast - বার্তা পাঠান\n"
+                        f"/info - বট ইনফো"
+                    ),
+                    footer=f"🤖 {self._get_random_word('bot')}: @{Config.BOT_USERNAME}",
+                    add_border=True
+                )
             
             await update.message.reply_text(admin_html, parse_mode=ParseMode.HTML)
             
         except Exception as e:
             log_error(f"Error in handle_admin: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "admin")
     
     async def handle_broadcast(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1013,8 +1139,18 @@ class RoastifyBot:
             message_text = ' '.join(context.args)
             
             # Get all users
-            with StorageManager.get_session() as db:
-                users = db.query(User).all()
+            try:
+                from database.models import get_session
+                
+                with get_session() as session:
+                    users = session.query(User).all()
+            except Exception as db_error:
+                log_error(f"Database error in handle_broadcast: {db_error}")
+                await update.message.reply_text(
+                    "ডাটাবেস অ্যাক্সেস করতে সমস্যা!",
+                    parse_mode=ParseMode.HTML
+                )
+                return
             
             # Send broadcast
             sent_count = 0
@@ -1045,6 +1181,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Error in handle_broadcast: {e}")
+            traceback.print_exc()
             await self._send_error_message(update, "broadcast")
     
     # ==================== HELPER METHODS ====================
@@ -1056,16 +1193,18 @@ class RoastifyBot:
             return False
         
         # Check minimum length
-        if len(text) < Config.MIN_INPUT_LENGTH:
+        if hasattr(Config, 'MIN_INPUT_LENGTH') and len(text) < Config.MIN_INPUT_LENGTH:
             return False
         
         # Check safety
-        if not safety_checker.is_safe_content(text):
-            return False
+        if hasattr(safety_checker, 'is_safe_content'):
+            if not safety_checker.is_safe_content(text):
+                return False
         
         # Check for disallowed content
-        if safety_checker.contains_disallowed_content(text):
-            return False
+        if hasattr(safety_checker, 'contains_disallowed_content'):
+            if safety_checker.contains_disallowed_content(text):
+                return False
         
         return True
     
@@ -1078,7 +1217,10 @@ class RoastifyBot:
             last_time = self.user_cooldowns[key]
             time_diff = (current_time - last_time).total_seconds()
             
-            if time_diff < Config.COOLDOWN_SECONDS:
+            if hasattr(Config, 'COOLDOWN_SECONDS'):
+                if time_diff < Config.COOLDOWN_SECONDS:
+                    return False
+            elif time_diff < 5:  # Default cooldown
                 return False
         
         self.user_cooldowns[key] = current_time
@@ -1087,9 +1229,11 @@ class RoastifyBot:
     def _get_user_rank(self, user_id: int) -> int:
         """Get user rank"""
         try:
-            with StorageManager.get_session() as db:
+            from database.models import get_session
+            
+            with get_session() as session:
                 # Get all users ordered by roast count
-                users = db.query(User).order_by(User.roast_count.desc()).all()
+                users = session.query(User).order_by(User.roast_count.desc()).all()
                 
                 for i, user in enumerate(users, 1):
                     if user.user_id == user_id:
@@ -1154,6 +1298,7 @@ class RoastifyBot:
                 
         except Exception as e:
             log_error(f"Error sending error message: {e}")
+            traceback.print_exc()
     
     # ==================== BOT CONTROL METHODS ====================
     
@@ -1183,6 +1328,7 @@ class RoastifyBot:
             
         except Exception as e:
             log_error(f"Application setup failed: {e}")
+            traceback.print_exc()
             return False
     
     def _register_all_handlers(self):
@@ -1199,18 +1345,11 @@ class RoastifyBot:
                 ("ping", self.handle_ping),
                 ("info", self.handle_info),
                 ("sticker", self.handle_sticker),
-            ]
-            
-            for cmd, handler in commands:
-                self.application.add_handler(CommandHandler(cmd, handler))
-            
-            # Admin commands
-            admin_commands = [
                 ("admin", self.handle_admin),
                 ("broadcast", self.handle_broadcast),
             ]
             
-            for cmd, handler in admin_commands:
+            for cmd, handler in commands:
                 self.application.add_handler(CommandHandler(cmd, handler))
             
             # Message handlers
@@ -1220,14 +1359,16 @@ class RoastifyBot:
             ))
             
             # Callback query handler for votes
-            self.application.add_handler(CallbackQueryHandler(
-                self.vote_system.handle_vote_callback
-            ))
+            if hasattr(self.vote_system, 'handle_vote_callback'):
+                self.application.add_handler(CallbackQueryHandler(
+                    self.vote_system.handle_vote_callback
+                ))
             
             logger.info("✅ All handlers registered successfully")
             
         except Exception as e:
             log_error(f"Handler registration failed: {e}")
+            traceback.print_exc()
     
     async def _set_bot_commands(self):
         """Set bot commands for menu"""
@@ -1309,6 +1450,7 @@ class RoastifyBot:
             
         except Exception as e:
             logger.error(f"❌ Failed to start bot: {e}")
+            traceback.print_exc()
             await self.stop()
     
     async def _keep_running(self):
@@ -1327,6 +1469,7 @@ class RoastifyBot:
             logger.info("Bot stopped by cancellation")
         except Exception as e:
             logger.error(f"Error in keep_running: {e}")
+            traceback.print_exc()
     
     async def stop(self):
         """Stop the bot"""
@@ -1343,6 +1486,7 @@ class RoastifyBot:
             
         except Exception as e:
             logger.error(f"Error stopping bot: {e}")
+            traceback.print_exc()
 
 # ==================== MAIN FUNCTION ====================
 
