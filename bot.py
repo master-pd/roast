@@ -76,7 +76,7 @@ class RoastifyBot:
             self.mention_system = MentionSystem()
             self.reaction_system = ReactionSystem()
             self.admin_protection = AdminProtection()
-            self.auto_quotes = AutoQuoteSystem()
+            self.auto_quotes = AutoQuotes(self, self.quote_system)
             self.sticker_maker = StickerMaker()
             self.quote_of_day = QuoteOfDay()
             
