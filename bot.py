@@ -1,639 +1,801 @@
 #!/usr/bin/env python3
 """
-Roastify Bot - Main Bot File (Fully Fixed)
-তুমি লেখো, বাকি অপমান আমরা করবো 😈
+Roastify Telegram Bot - Professional Version
+হাই-কোয়ালিটি ইমেজ + টেক্সট রিপ্লাই সিস্টেম
 """
 
 import os
 import sys
+import random
+import asyncio
 import logging
 import json
-import asyncio
-import random
-import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass
 
-# Add current directory and roast_engine to path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-roast_engine_path = os.path.join(current_dir, 'roast_engine')
-if os.path.exists(roast_engine_path):
-    sys.path.insert(0, roast_engine_path)
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent))
 
-from dotenv import load_dotenv
+# Import from your project structure
+try:
+    from config import Config
+    from utils.logger import setup_logger
+    from utils.helpers import format_name, sanitize_text, generate_hash
+    from utils.time_manager import TimeManager, CooldownManager
+    from database.storage import DatabaseManager
+    from image_engine.image_generator import ImageGenerator
+    from roast_engine.roaster import RoastGenerator
+    from roast_engine.safety_check import SafetyChecker
+    from features.welcome_system import WelcomeSystem
+    from features.mention_system import MentionSystem
+    from features.admin_protection import AdminProtection
+except ImportError as e:
+    print(f"❌ Import error: {e}")
+    print("📁 Please check your folder structure matches the specification.")
+    sys.exit(1)
+
 from telegram import (
-    Update, 
-    InlineKeyboardMarkup, 
-    InlineKeyboardButton, 
-    ReplyKeyboardMarkup, 
-    KeyboardButton,
-    ReplyKeyboardRemove
+    Update,
+    User,
+    Chat,
+    Message,
+    ChatMember,
+    ChatPermissions,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputFile
 )
+from telegram.constants import ParseMode, ChatType, ChatAction
 from telegram.ext import (
-    Application, 
-    CommandHandler, 
-    MessageHandler, 
-    CallbackQueryHandler, 
+    Application,
+    MessageHandler,
+    CommandHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
-    ConversationHandler
+    ApplicationBuilder
 )
+from telegram.error import TelegramError, BadRequest, Forbidden
 
-# ========== MODULE IMPORT WITH WORKING FALLBACK ==========
-def import_with_fallback():
-    """Import modules with working fallback classes"""
-    
-    # SafetyChecker - FIXED VERSION
-    try:
-        from safety_checker import SafetyChecker
-        safety_checker_class = SafetyChecker
-    except ImportError:
-        class SafetyChecker:
-            def __init__(self):
-                self.logger = logging.getLogger(__name__)
-                self.logger.info("✅ Using fallback SafetyChecker")
-                self.banned_words = ["fuck", "shit", "asshole", "গালি", "অপমান", "অশ্লীল"]
-            
-            def is_safe(self, text, user_id=None):
-                """Check if text is safe - FIXED METHOD"""
-                if not text:
-                    return False
-                text_lower = text.lower()
-                for word in self.banned_words:
-                    if word in text_lower:
-                        self.logger.warning(f"Banned word detected: {word}")
-                        return False
-                return True
-            
-            def analyze_message(self, text, user_id=None):
-                """Analyze message safety"""
-                return {"is_safe": True, "score": 100, "warnings": []}
-        
-        safety_checker_class = SafetyChecker
-    
-    # ImageGenerator
-    try:
-        from image_generator import AdvancedImageGenerator
-        image_generator_class = AdvancedImageGenerator
-    except ImportError:
-        class AdvancedImageGenerator:
-            def __init__(self):
-                self.logger = logging.getLogger(__name__)
-                self.logger.info("✅ Using fallback ImageGenerator")
-            
-            def generate_roast_image(self, roast_text, name, style="default"):
-                self.logger.info(f"📸 Would generate image for {name}")
-                return None
-        
-        image_generator_class = AdvancedImageGenerator
-    
-    # AutoQuoteSystem
-    try:
-        from auto_quote import AutoQuoteSystem
-        auto_quote_class = AutoQuoteSystem
-    except ImportError:
-        class AutoQuoteSystem:
-            def __init__(self, bot=None):
-                self.bot = bot
-                self.logger = logging.getLogger(__name__)
-                self.logger.info("✅ Using fallback AutoQuoteSystem")
-                self.quotes = [
-                    "জীবন সুন্দর যখন তুমি সুন্দর চিন্তা করো",
-                    "ভালোবাসা দিয়ে পাওয়া যায়, ক্রয় করা যায় না",
-                    "জ্ঞান হলো সেই সম্পদ যা কখনো চুরি হয় না"
-                ]
-                self.jokes = [
-                    "শিক্ষক: পরীক্ষার সময় কপি করবে কেন?\nছাত্র: স্যার, কপিরাইট তো ভাঙবো না!",
-                    "ডাক্তার: আপনার হার্টের অবস্থা ভালো না।\nরোগী: কষ্ট করে বলছেন কেন, মেসেজ করে দিতেন!"
-                ]
-                self.facts = [
-                    "মৌমাছিরা এক সেকেন্ডে ২০০ বার ডানা ঝাপটায়",
-                    "মানুষের মস্তিষ্ক ৭৫% পানি দিয়ে তৈরি"
-                ]
-            
-            async def get_random_quote(self):
-                """Get random quote"""
-                quote = random.choice(self.quotes)
-                return f"<b>📜 Quote of the Day:</b>\n\n<i>\"{quote}\"</i>"
-            
-            async def get_random_joke(self):
-                """Get random joke"""
-                joke = random.choice(self.jokes)
-                return f"<b>😂 Funny Joke:</b>\n\n{joke}"
-            
-            async def get_random_fact(self):
-                """Get random fact"""
-                fact = random.choice(self.facts)
-                return f"<b>🔍 Did You Know?</b>\n\n{fact}"
-        
-        auto_quote_class = AutoQuoteSystem
-    
-    # DatabaseManager
-    try:
-        from database import DatabaseManager
-        database_class = DatabaseManager
-    except ImportError:
-        class DatabaseManager:
-            def __init__(self):
-                self.logger = logging.getLogger(__name__)
-                self.logger.info("✅ Using fallback DatabaseManager")
-                self.users = {}
-                self.roasts = []
-            
-            def add_user(self, user_id, first_name, username=None):
-                """Add user to database"""
-                self.users[user_id] = {
-                    "name": first_name, 
-                    "username": username,
-                    "joined": datetime.now()
-                }
-                return True
-            
-            def get_user_stats(self, user_id):
-                """Get user statistics"""
-                return {"roast_count": 0, "rank": 100, "level": 1}
-        
-        database_class = DatabaseManager
-    
-    # Config Loader
-    def load_config_function():
-        """Load configuration"""
-        try:
-            from config_loader import load_config
-            return load_config()
-        except ImportError:
-            # Try to load from .env
-            try:
-                from dotenv import load_dotenv
-                load_dotenv()
-            except:
-                pass
-            
-            config = {
-                'BOT_TOKEN': os.getenv('BOT_TOKEN', ''),
-                'ADMIN_IDS': [],
-                'LOG_LEVEL': os.getenv('LOG_LEVEL', 'INFO'),
-                'DATABASE_URL': os.getenv('DATABASE_URL', 'sqlite:///roastify.db'),
-                'RATE_LIMIT': int(os.getenv('RATE_LIMIT', '5')),
-                'DAILY_LIMIT': int(os.getenv('DAILY_LIMIT', '20')),
-                'MAX_IMAGE_SIZE': int(os.getenv('MAX_IMAGE_SIZE', '5242880')),
-                'GROUP_ID': os.getenv('GROUP_ID', ''),
-                'CHANNEL_ID': os.getenv('CHANNEL_ID', ''),
-                'AUTO_QUOTE_INTERVAL': int(os.getenv('AUTO_QUOTE_INTERVAL', '3600')),
-                'ENABLE_AUTO_QUOTES': os.getenv('ENABLE_AUTO_QUOTES', 'True').lower() == 'true'
-            }
-            
-            # Parse admin IDs
-            admin_ids_str = os.getenv('ADMIN_IDS', '')
-            if admin_ids_str:
-                try:
-                    config['ADMIN_IDS'] = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip().isdigit()]
-                except:
-                    config['ADMIN_IDS'] = []
-            
-            return config
-    
-    return (safety_checker_class, image_generator_class, auto_quote_class, 
-            database_class, load_config_function)
-
-# Import with fallback
-SafetyChecker, AdvancedImageGenerator, AutoQuoteSystem, DatabaseManager, load_config_func = import_with_fallback()
-
+# ========== MAIN BOT CLASS ==========
 class RoastifyBot:
-    """Main bot class for Roastify with enhanced features"""
+    """Professional Roastify Bot with Image+Text replies"""
     
     def __init__(self):
-        """Initialize the bot with all features"""
-        self.logger = self.setup_logger()
-        self.logger.info("🚀 Initializing Roastify Bot v3.0...")
+        """Initialize bot with all modules"""
+        # Setup logger
+        self.logger = setup_logger("RoastifyBot")
+        self.logger.info("🚀 Initializing Roastify Bot Professional...")
         
         # Load configuration
-        self.config = self.load_config()
+        self.config = Config()
         
-        # Bot token validation
-        self.bot_token = self.config.get('BOT_TOKEN')
-        if not self.bot_token or self.bot_token == 'YOUR_BOT_TOKEN_HERE':
-            # Try to get from environment again
-            try:
-                load_dotenv()
-                self.bot_token = os.getenv('BOT_TOKEN', '')
-            except:
-                pass
-            
-            if not self.bot_token:
-                raise ValueError("❌ BOT_TOKEN not found! Please add your bot token to .env file")
-        
-        # Initialize application with persistence
-        try:
-            self.application = Application.builder() \
-                .token(self.bot_token) \
-                .concurrent_updates(True) \
-                .build()
-            self.logger.info("✅ Telegram application initialized")
-        except Exception as e:
-            self.logger.error(f"❌ Failed to initialize application: {e}")
-            raise
+        # Validate bot token
+        if not self.config.BOT_TOKEN:
+            self.logger.error("❌ BOT_TOKEN not found in config!")
+            raise ValueError("Please set BOT_TOKEN in .env file")
         
         # Initialize modules
-        self.initialize_modules()
+        self._init_modules()
         
-        # User data cache
-        self.user_data_cache = {}
-        self.roast_counters = {}
-        self.last_roast_time = {}
+        # Initialize Telegram Application
+        self.application = ApplicationBuilder() \
+            .token(self.config.BOT_TOKEN) \
+            .concurrent_updates(True) \
+            .build()
         
-        # Bot statistics
+        # Register handlers
+        self._register_handlers()
+        
+        # Statistics
         self.stats = {
-            'total_roasts': 0,
-            'total_users': 0,
-            'today_roasts': 0,
-            'active_chats': set(),
-            'start_time': datetime.now()
+            "total_messages": 0,
+            "total_roasts": 0,
+            "total_images": 0,
+            "active_chats": set(),
+            "start_time": datetime.now()
         }
         
-        # Rate limiting
-        self.rate_limit = self.config.get('RATE_LIMIT', 5)
-        self.daily_limit = self.config.get('DAILY_LIMIT', 20)
-        
-        # Register all handlers
-        self.register_all_handlers()
-        
-        # Initialize auto quote system
-        self.auto_quote_system = AutoQuoteSystem(bot=self)
-        
-        self.logger.info("🎉 Roastify Bot v3.0 initialized successfully!")
-        self.logger.info(f"📊 Config: Rate Limit={self.rate_limit}/min, Daily Limit={self.daily_limit}/day")
-    
-    def setup_logger(self):
-        """Setup logging configuration"""
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.INFO)
-        
-        # Create handlers
-        console_handler = logging.StreamHandler()
-        file_handler = logging.FileHandler('logs/bot.log', encoding='utf-8')
-        
-        # Create formatters
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+        # Cooldown tracker
+        self.cooldown_manager = CooldownManager(
+            user_cooldown=3,
+            chat_cooldown=2
         )
         
-        console_handler.setFormatter(formatter)
-        file_handler.setFormatter(formatter)
-        
-        # Add handlers
-        logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
-        
-        return logger
+        self.logger.info("✅ Roastify Bot Professional initialized!")
+        self.logger.info(f"📊 Settings: Always send both = {self.config.ALWAYS_SEND_BOTH}")
     
-    def load_config(self):
-        """Load configuration from .env file"""
+    def _init_modules(self):
+        """Initialize all required modules"""
         try:
-            return load_config_func()
-        except Exception as e:
-            self.logger.error(f"❌ Error loading config: {e}")
-            return {
-                'BOT_TOKEN': '',
-                'ADMIN_IDS': [],
-                'LOG_LEVEL': 'INFO',
-                'DATABASE_URL': 'sqlite:///roastify.db',
-                'RATE_LIMIT': 5,
-                'DAILY_LIMIT': 20,
-                'MAX_IMAGE_SIZE': 5242880,
-                'GROUP_ID': '',
-                'CHANNEL_ID': '',
-                'AUTO_QUOTE_INTERVAL': 3600,
-                'ENABLE_AUTO_QUOTES': True
-            }
-    
-    def initialize_modules(self):
-        """Initialize all bot modules"""
-        try:
-            self.safety_checker = SafetyChecker()
-            self.logger.info("✅ SafetyChecker initialized")
-        except Exception as e:
-            self.logger.error(f"❌ SafetyChecker: {e}")
-            # Create minimal safety checker
-            class MinimalSafetyChecker:
-                def is_safe(self, text, user_id=None):
-                    return True if text and len(text) > 1 else False
-            self.safety_checker = MinimalSafetyChecker()
-        
-        try:
-            self.image_generator = AdvancedImageGenerator()
-            self.logger.info("✅ ImageGenerator initialized")
-        except Exception as e:
-            self.logger.error(f"❌ ImageGenerator: {e}")
-            self.image_generator = None
-        
-        try:
+            # Database
             self.db = DatabaseManager()
             self.logger.info("✅ Database initialized")
+            
+            # Roast Generator
+            self.roaster = RoastGenerator()
+            self.logger.info("✅ Roast Generator initialized")
+            
+            # Image Generator
+            self.image_gen = ImageGenerator()
+            self.logger.info("✅ Image Generator initialized")
+            
+            # Safety Checker
+            self.safety = SafetyChecker()
+            self.logger.info("✅ Safety Checker initialized")
+            
+            # Welcome System
+            self.welcome = WelcomeSystem()
+            self.logger.info("✅ Welcome System initialized")
+            
+            # Mention System
+            self.mentions = MentionSystem()
+            self.logger.info("✅ Mention System initialized")
+            
+            # Admin Protection
+            self.admin_protection = AdminProtection()
+            self.logger.info("✅ Admin Protection initialized")
+            
+            # Time Manager
+            self.time_manager = TimeManager()
+            self.logger.info("✅ Time Manager initialized")
+            
         except Exception as e:
-            self.logger.error(f"❌ Database: {e}")
-            self.db = None
+            self.logger.error(f"❌ Failed to initialize modules: {e}")
+            raise
     
-    def register_all_handlers(self):
-        """Register all command and message handlers"""
+    def _register_handlers(self):
+        """Register all message and command handlers"""
         
-        # ========== BASIC COMMANDS ==========
-        basic_commands = [
-            ("start", self.start_command),
-            ("help", self.help_command),
-            ("roast", self.roast_command),
-            ("stats", self.stats_command),
-            ("profile", self.profile_command),
-            ("quote", self.quote_command),
-            ("joke", self.joke_command),
-            ("fact", self.fact_command),
-            ("invite", self.invite_command),
-            ("support", self.support_command),
+        # ========== COMMAND HANDLERS ==========
+        commands = [
+            ("start", self._handle_start),
+            ("help", self._handle_help),
+            ("roast", self._handle_roast_command),
+            ("roastme", self._handle_roastme),
+            ("stats", self._handle_stats),
+            ("profile", self._handle_profile),
+            ("leaderboard", self._handle_leaderboard),
+            ("settings", self._handle_settings),
+            ("invite", self._handle_invite),
+            ("support", self._handle_support),
         ]
         
-        for command, handler in basic_commands:
-            self.application.add_handler(CommandHandler(command, handler))
+        for cmd, handler in commands:
+            self.application.add_handler(CommandHandler(cmd, handler))
         
         # ========== MESSAGE HANDLERS ==========
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_message))
+        # Handle all text messages
+        self.application.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND,
+                self._handle_text_message
+            )
+        )
         
-        # ========== CALLBACK QUERY HANDLERS ==========
-        self.application.add_handler(CallbackQueryHandler(self.handle_callback_query))
+        # Handle group events
+        self.application.add_handler(
+            MessageHandler(
+                filters.StatusUpdate.NEW_CHAT_MEMBERS,
+                self._handle_new_members
+            )
+        )
+        
+        # ========== CALLBACK HANDLERS ==========
+        self.application.add_handler(
+            CallbackQueryHandler(self._handle_callback)
+        )
         
         # ========== ERROR HANDLER ==========
-        self.application.add_error_handler(self.error_handler)
+        self.application.add_error_handler(self._handle_error)
         
-        self.logger.info(f"✅ Registered {len(basic_commands)} commands")
+        self.logger.info(f"✅ Registered {len(commands)} commands")
     
-    # ========== COMMAND HANDLERS ==========
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command"""
+    # ========== TEXT MESSAGE HANDLER (MAIN LOGIC) ==========
+    async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Handle ALL text messages in chats
+        This is the main logic that sends IMAGE + TEXT replies
+        """
         try:
-            user = update.effective_user
-            message = update.message or update.callback_query.message
-            
-            keyboard = [
-                [InlineKeyboardButton("🎭 Create Roast", callback_data="create_roast")],
-                [InlineKeyboardButton("📊 My Stats", callback_data="my_stats")],
-                [InlineKeyboardButton("🆘 Help", callback_data="help_menu")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            welcome_text = f"""
-<b>🎉 Welcome to Roastify Bot, {user.first_name}!</b> 🤖
-
-Use <code>/roast [name]</code> to roast someone.
-
-Example: <code>/roast John</code>
-            """
-            
-            await message.reply_html(welcome_text, reply_markup=reply_markup)
-            
-        except Exception as e:
-            self.logger.error(f"Error in start_command: {e}")
-            try:
-                await update.message.reply_text("Welcome! Use /help for commands.")
-            except:
-                pass
-    
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help command"""
-        try:
-            message = update.message or update.callback_query.message
-            
-            help_text = """
-<b>🤖 ROASTIFY BOT COMMANDS</b>
-
-• <code>/start</code> - Start the bot
-• <code>/help</code> - Show this help
-• <code>/roast [name]</code> - Roast someone
-• <code>/stats</code> - Bot statistics
-• <code>/profile</code> - Your profile
-• <code>/quote</code> - Random quote
-• <code>/joke</code> - Random joke
-• <code>/fact</code> - Random fact
-• <code>/invite</code> - Invite link
-• <code>/support</code> - Support
-
-<b>Example:</b> <code>/roast John</code>
-            """
-            
-            await message.reply_html(help_text)
-            
-        except Exception as e:
-            self.logger.error(f"Error in help_command: {e}")
-    
-    async def roast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /roast command"""
-        try:
-            user_id = update.effective_user.id
-            message = update.message or update.callback_query.message
-            
-            # Get target name
-            if context.args:
-                target_name = ' '.join(context.args)
-            else:
-                await message.reply_text("Please specify a name!\nUsage: /roast [name]\nExample: /roast John")
+            message = update.message
+            if not message or not message.text:
                 return
             
-            # Safety check
-            if self.safety_checker:
-                try:
-                    if not self.safety_checker.is_safe(target_name):
-                        await message.reply_text("⚠️ Please use appropriate names only.")
-                        return
-                except AttributeError:
-                    # is_safe method might not exist
-                    pass
+            user = message.from_user
+            chat = message.chat
             
-            # Generate roast
-            roast_text = self.generate_roast(target_name)
+            # Update statistics
+            self.stats["total_messages"] += 1
+            self.stats["active_chats"].add(chat.id)
             
-            # Create keyboard
-            keyboard = [
-                [InlineKeyboardButton("🔄 Another", callback_data=f"another:{target_name}")],
-                [InlineKeyboardButton("📊 Stats", callback_data="my_stats")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            # Log message (optional)
+            if self.config.LOG_USER_MESSAGES:
+                self.logger.info(f"📝 Message from {user.id} in {chat.id}: {message.text[:50]}...")
             
-            # Send roast
-            await message.reply_html(
-                f"<b>🔥 Roast for {target_name}:</b>\n\n"
-                f"<i>{roast_text}</i>",
-                reply_markup=reply_markup
+            # Check cooldown
+            if self.cooldown_manager.is_on_cooldown(user.id, chat.id):
+                return
+            
+            # Check message length
+            if len(message.text.strip()) < self.config.MIN_MESSAGE_LENGTH:
+                return
+            
+            # Check safety
+            if not self.safety.is_safe(message.text, user.id):
+                return
+            
+            # Check if bot should reply in this chat type
+            if not self._should_reply_in_chat(chat.type):
+                return
+            
+            # Check admin protection (don't roast admins if configured)
+            if self.admin_protection.should_skip_user(user.id, chat.id):
+                return
+            
+            # Process mentions in message
+            mentioned_users = await self.mentions.extract_mentions(message)
+            if mentioned_users:
+                # Roast mentioned users
+                for mentioned_user in mentioned_users[:3]:  # Max 3 users
+                    await self._send_roast_reply(
+                        target_user=mentioned_user,
+                        source_user=user,
+                        chat=chat,
+                        original_message=message.text,
+                        context=context
+                    )
+            else:
+                # Roast the message sender
+                await self._send_roast_reply(
+                    target_user=user,
+                    source_user=user,
+                    chat=chat,
+                    original_message=message.text,
+                    context=context
+                )
+            
+            # Update cooldown
+            self.cooldown_manager.set_cooldown(user.id, chat.id)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in text message handler: {e}")
+    
+    async def _send_roast_reply(self, target_user: User, source_user: User, 
+                               chat: Chat, original_message: str, 
+                               context: ContextTypes.DEFAULT_TYPE):
+        """
+        Send IMAGE + TEXT roast reply
+        This is the core function that sends both formats
+        """
+        try:
+            # Generate roast text
+            roast_text = self.roaster.generate_roast(
+                target_name=target_user.first_name,
+                original_text=original_message
+            )
+            
+            # Generate image roast
+            image_bytes = await self._generate_roast_image(
+                target_user=target_user,
+                source_user=source_user,
+                roast_text=roast_text,
+                original_message=original_message,
+                chat=chat
+            )
+            
+            # Send IMAGE reply
+            if image_bytes:
+                await self._send_image_reply(
+                    image_bytes=image_bytes,
+                    chat_id=chat.id,
+                    context=context,
+                    target_name=target_user.first_name
+                )
+                self.stats["total_images"] += 1
+            
+            # Send TEXT reply
+            text_reply = self._format_text_reply(
+                roast_text=roast_text,
+                target_user=target_user,
+                source_user=source_user
+            )
+            
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text=text_reply,
+                parse_mode=ParseMode.HTML
             )
             
             # Update statistics
-            self.update_roast_stats(user_id, target_name)
+            self.stats["total_roasts"] += 1
+            self.db.increment_roast_count(target_user.id)
+            
+            self.logger.info(f"🔥 Roast sent to {target_user.id} by {source_user.id}")
             
         except Exception as e:
-            self.logger.error(f"Error in roast_command: {e}")
+            self.logger.error(f"❌ Error sending roast reply: {e}")
+            # Fallback: Send text only if image fails
             try:
-                message = update.message or update.callback_query.message
-                await message.reply_text("❌ Error generating roast. Please try again.")
+                roast_text = self.roaster.generate_roast(
+                    target_name=target_user.first_name,
+                    original_text=original_message
+                )
+                text_reply = self._format_text_reply(
+                    roast_text=roast_text,
+                    target_user=target_user,
+                    source_user=source_user
+                )
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=text_reply,
+                    parse_mode=ParseMode.HTML
+                )
             except:
                 pass
     
-    def generate_roast(self, name: str) -> str:
-        """Generate a roast for given name"""
-        roasts = [
-            f"{name}, তোমার বুদ্ধির জন্য পৃথিবীতে এখনো কোন এন্টিবায়োটিক আবিষ্কার হয়নি!",
-            f"{name}, তুমি যদি কম্পিউটার হোতা, তাহলে Ctrl+Alt+Delete তোমার সবচেয়ে ব্যবহার করা হত!",
-            f"{name}, তোমাকে দেখলে আইনস্টাইন তার থিওরি ভুলে যেত!",
-            f"{name}, তোমার মতো মানুষ জন্মানোর আগে আল্লাহ একটু ভাবছিলেন কি করবেন!",
-            f"{name}, তোমার বুদ্ধিমত্তা দেখলে ক্যালকুলেটরও হতাশ হয়!",
-        ]
-        return random.choice(roasts)
-    
-    async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /stats command"""
+    async def _generate_roast_image(self, target_user: User, source_user: User,
+                                  roast_text: str, original_message: str,
+                                  chat: Chat) -> Optional[bytes]:
+        """Generate roast image using ImageGenerator"""
         try:
-            message = update.message or update.callback_query.message
+            # Get user profile photo
+            profile_photo_bytes = None
+            try:
+                photos = await source_user.get_profile_photos(limit=1)
+                if photos and photos.photos:
+                    # Get the largest photo
+                    photo = photos.photos[0][-1]
+                    profile_photo_file = await photo.get_file()
+                    profile_photo_bytes = await profile_photo_file.download_as_bytearray()
+            except:
+                profile_photo_bytes = None
             
-            uptime = datetime.now() - self.stats['start_time']
-            days = uptime.days
-            hours = uptime.seconds // 3600
-            minutes = (uptime.seconds % 3600) // 60
+            # Prepare data for image generation
+            image_data = {
+                "target_name": target_user.first_name,
+                "target_username": target_user.username,
+                "source_name": source_user.first_name,
+                "source_username": source_user.username,
+                "roast_text": roast_text,
+                "original_message": original_message[:100],  # Limit length
+                "chat_title": chat.title if hasattr(chat, 'title') else "",
+                "timestamp": datetime.now().strftime("%H:%M"),
+                "profile_photo": profile_photo_bytes
+            }
             
-            stats_text = f"""
-<b>📊 BOT STATISTICS</b>
-
-• <b>Version:</b> 3.0
-• <b>Uptime:</b> {days}d {hours}h {minutes}m
-• <b>Total Roasts:</b> {self.stats['total_roasts']}
-• <b>Today's Roasts:</b> {self.stats['today_roasts']}
-• <b>Active Chats:</b> {len(self.stats['active_chats'])}
-• <b>Rate Limit:</b> {self.rate_limit}/min
-• <b>Daily Limit:</b> {self.daily_limit}/day
-            """
-            
-            await message.reply_html(stats_text)
+            # Generate image
+            image_bytes = await self.image_gen.generate_roast_image(image_data)
+            return image_bytes
             
         except Exception as e:
-            self.logger.error(f"Error in stats_command: {e}")
+            self.logger.error(f"❌ Image generation error: {e}")
+            return None
     
-    async def profile_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _send_image_reply(self, image_bytes: bytes, chat_id: int,
+                              context: ContextTypes.DEFAULT_TYPE, target_name: str):
+        """Send image reply to chat"""
+        try:
+            # Create InputFile from bytes
+            image_file = InputFile(BytesIO(image_bytes), filename=f"roast_{target_name}.jpg")
+            
+            # Send image with caption
+            caption = f"🔥 Roast for {target_name} \n\n<i>Generated by Roastify Pro</i>"
+            
+            await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=image_file,
+                caption=caption,
+                parse_mode=ParseMode.HTML
+            )
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error sending image: {e}")
+    
+    def _format_text_reply(self, roast_text: str, target_user: User, 
+                          source_user: User) -> str:
+        """Format text reply with HTML"""
+        return (
+            f"<b>🔥 Roast Alert!</b>\n\n"
+            f"<i>{roast_text}</i>\n\n"
+            f"👤 <b>Target:</b> {target_user.first_name}\n"
+            f"🎯 <b>Roasted by:</b> {source_user.first_name}\n"
+            f"🕒 <b>Time:</b> {datetime.now().strftime('%I:%M %p')}\n\n"
+            f"<i>Powered by Roastify Pro 🤖</i>"
+        )
+    
+    def _should_reply_in_chat(self, chat_type: str) -> bool:
+        """Check if bot should reply in this chat type"""
+        if chat_type == ChatType.PRIVATE:
+            return self.config.REPLY_IN_PRIVATE
+        elif chat_type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            return self.config.REPLY_IN_GROUPS
+        elif chat_type == ChatType.CHANNEL:
+            return self.config.REPLY_IN_CHANNELS
+        return False
+    
+    # ========== COMMAND HANDLERS ==========
+    async def _handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command"""
+        try:
+            user = update.effective_user
+            
+            welcome_text = f"""
+<b>🎉 Welcome to Roastify Pro, {user.first_name}!</b> 🔥
+
+I'm an advanced Telegram bot that sends professional roast replies with images!
+
+<b>How it works:</b>
+1. I listen to all messages in chats
+2. I automatically generate funny roasts
+3. I send <b>HIGH-QUALITY IMAGE + TEXT</b> replies
+4. I work in unlimited groups simultaneously
+
+<b>Quick Commands:</b>
+• Just chat normally - I'll reply automatically!
+• <code>/roast @username</code> - Roast specific user
+• <code>/roastme</code> - Roast yourself
+• <code>/stats</code> - Bot statistics
+• <code>/help</code> - All commands
+
+<b>Features:</b>
+✅ Professional image generation
+✅ Smart mention detection  
+✅ Multi-group support
+✅ Safety filters
+✅ Admin protection
+
+<b>Add me to groups:</b> <code>/invite</code>
+
+Made with ❤️ by RanaDeveloper
+            """
+            
+            keyboard = [
+                [InlineKeyboardButton("➕ Add to Group", callback_data="add_to_group")],
+                [InlineKeyboardButton("📊 Bot Stats", callback_data="bot_stats")],
+                [InlineKeyboardButton("🎭 Try Roast", callback_data="try_roast")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_html(welcome_text, reply_markup=reply_markup)
+            
+        except Exception as e:
+            self.logger.error(f"Error in start: {e}")
+    
+    async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command"""
+        help_text = """
+<b>🤖 ROASTIFY PRO - HELP</b>
+
+<b>🎯 HOW TO USE:</b>
+Simply add me to any group! I'll automatically reply to messages with roasts.
+
+<b>📝 COMMANDS:</b>
+
+<b>🎭 ROAST COMMANDS:</b>
+• <code>/roast @username</code> - Roast specific user
+• <code>/roastme</code> - Roast yourself
+• Just mention someone in chat - I'll detect it!
+
+<b>📊 INFO COMMANDS:</b>
+• <code>/stats</code> - Bot statistics
+• <code>/profile</code> - Your roast profile
+• <code>/leaderboard</code> - Top roasters
+• <code>/settings</code> - Bot settings
+
+<b>🔗 UTILITY:</b>
+• <code>/invite</code> - Invite link
+• <code>/support</code> - Support & help
+
+<b>⚙️ AUTO FEATURES:</b>
+✅ Replies to all messages with images
+✅ Detects mentions automatically
+✅ Works in unlimited groups
+✅ High-quality image generation
+
+<b>📱 EXAMPLE:</b>
+You: "Hey @john, you're funny!"
+Bot: [Sends image roast] + [Text roast]
+
+<b>⚠️ NOTE:</b> For entertainment only!
+        """
+        
+        await update.message.reply_html(help_text)
+    
+    async def _handle_roast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /roast @username command"""
+        try:
+            if not context.args:
+                await update.message.reply_text(
+                    "Please mention someone to roast!\n\n"
+                    "Usage: <code>/roast @username</code>\n"
+                    "Example: <code>/roast @john</code>",
+                    parse_mode=ParseMode.HTML
+                )
+                return
+            
+            target_username = context.args[0].replace('@', '')
+            source_user = update.effective_user
+            
+            # In a real implementation, you would:
+            # 1. Lookup user by username
+            # 2. Generate roast
+            # 3. Send image + text
+            
+            roast_text = self.roaster.generate_roast(target_username, "Command roast")
+            
+            await update.message.reply_html(
+                f"<b>🔥 Command Roast for @{target_username}:</b>\n\n"
+                f"<i>{roast_text}</i>\n\n"
+                f"<i>Roasted by: {source_user.first_name}</i>"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error in roast command: {e}")
+    
+    async def _handle_roastme(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /roastme command"""
+        try:
+            user = update.effective_user
+            
+            # Generate self-roast
+            roast_text = self.roaster.generate_roast(user.first_name, "Self roast")
+            
+            # Generate image
+            image_data = {
+                "target_name": user.first_name,
+                "target_username": user.username,
+                "source_name": "Yourself",
+                "roast_text": roast_text,
+                "original_message": "Self roast request",
+                "profile_photo": None
+            }
+            
+            image_bytes = await self.image_gen.generate_roast_image(image_data)
+            
+            if image_bytes:
+                # Send image
+                image_file = InputFile(BytesIO(image_bytes), filename=f"self_roast_{user.id}.jpg")
+                await update.message.reply_photo(
+                    photo=image_file,
+                    caption=f"🔥 Self-roast for {user.first_name}!",
+                    parse_mode=ParseMode.HTML
+                )
+            
+            # Send text
+            text_reply = (
+                f"<b>😈 Self-Roast Mode Activated!</b>\n\n"
+                f"<i>{roast_text}</i>\n\n"
+                f"💪 <b>That takes courage, {user.first_name}!</b>"
+            )
+            
+            await update.message.reply_html(text_reply)
+            
+        except Exception as e:
+            self.logger.error(f"Error in roastme: {e}")
+    
+    async def _handle_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /stats command"""
+        uptime = datetime.now() - self.stats["start_time"]
+        
+        stats_text = f"""
+<b>📊 ROASTIFY PRO STATISTICS</b>
+
+<b>🤖 Bot Info:</b>
+• Version: {self.config.VERSION}
+• Uptime: {str(uptime).split('.')[0]}
+• Developer: {self.config.DEVELOPER}
+
+<b>📈 Activity Stats:</b>
+• Total Messages: {self.stats['total_messages']:,}
+• Total Roasts: {self.stats['total_roasts']:,}
+• Total Images: {self.stats['total_images']:,}
+• Active Chats: {len(self.stats['active_chats']):,}
+
+<b>⚡ Performance:</b>
+• Reply Mode: Image + Text
+• Image Quality: {self.config.IMAGE_QUALITY}%
+• Cooldown: {self.cooldown_manager.user_cooldown}s/user
+
+<b>🎯 Today's Goal:</b> 10,000 roasts! 🔥
+        """
+        
+        await update.message.reply_html(stats_text)
+    
+    async def _handle_profile(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /profile command"""
         try:
             user = update.effective_user
-            message = update.message or update.callback_query.message
-            
-            total_roasts = self.roast_counters.get(user.id, 0)
+            user_stats = self.db.get_user_stats(user.id)
             
             profile_text = f"""
-<b>👤 YOUR PROFILE</b>
+<b>👤 YOUR ROAST PROFILE</b>
 
-• <b>Name:</b> {user.first_name}
-• <b>Username:</b> @{user.username or 'N/A'}
-• <b>User ID:</b> <code>{user.id}</code>
-• <b>Total Roasts:</b> {total_roasts}
-• <b>Level:</b> {total_roasts // 10 + 1}
+<b>📝 Basic Info:</b>
+• Name: {user.first_name}
+• Username: @{user.username or 'N/A'}
+• User ID: <code>{user.id}</code>
+
+<b>🔥 Roast Stats:</b>
+• Total Roasts Received: {user_stats.get('roasts_received', 0)}
+• Total Roasts Given: {user_stats.get('roasts_given', 0)}
+• Rank: #{user_stats.get('rank', 1)}
+• Level: {user_stats.get('level', 1)}
+
+<b>🏆 Achievements:</b>
+• {self._get_achievement(user_stats)}
+
+<b>📊 Activity:</b>
+• First Seen: {user_stats.get('first_seen', 'Today')}
+• Last Active: {user_stats.get('last_active', 'Now')}
+
+<b>💪 Keep roasting!</b>
             """
             
-            await message.reply_html(profile_text)
+            await update.message.reply_html(profile_text)
             
         except Exception as e:
-            self.logger.error(f"Error in profile_command: {e}")
+            self.logger.error(f"Error in profile: {e}")
     
-    async def quote_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /quote command"""
+    def _get_achievement(self, user_stats: Dict) -> str:
+        """Get user achievement"""
+        roasts = user_stats.get('roasts_received', 0)
+        
+        if roasts >= 100:
+            return "🏅 Roast Legend (100+ roasts)"
+        elif roasts >= 50:
+            return "🔥 Roast Master (50+ roasts)"
+        elif roasts >= 25:
+            return "😈 Roast Veteran (25+ roasts)"
+        elif roasts >= 10:
+            return "⭐ Roast Enthusiast (10+ roasts)"
+        else:
+            return "🌱 Roast Beginner"
+    
+    async def _handle_leaderboard(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /leaderboard command"""
         try:
-            message = update.message or update.callback_query.message
+            top_users = self.db.get_top_roasters(limit=10)
             
-            if self.auto_quote_system:
-                quote = await self.auto_quote_system.get_random_quote()
-                await message.reply_html(quote)
-            else:
-                await message.reply_text("Random quote: Life is beautiful!")
-                
-        except Exception as e:
-            self.logger.error(f"Error in quote_command: {e}")
-            try:
-                await message.reply_text("Random quote: Life is beautiful!")
-            except:
-                pass
-    
-    async def joke_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /joke command"""
-        try:
-            message = update.message or update.callback_query.message
+            if not top_users:
+                await update.message.reply_text("No roasts yet! Start chatting to see leaderboard.")
+                return
             
-            if self.auto_quote_system:
-                joke = await self.auto_quote_system.get_random_joke()
-                await message.reply_html(joke)
-            else:
-                jokes = [
-                    "Why don't scientists trust atoms? Because they make up everything!",
-                    "What do you call a fake noodle? An impasta!"
-                ]
-                await message.reply_text(random.choice(jokes))
-                
-        except Exception as e:
-            self.logger.error(f"Error in joke_command: {e}")
-    
-    async def fact_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /fact command"""
-        try:
-            message = update.message or update.callback_query.message
+            leaderboard_text = "<b>🏆 TOP 10 ROASTERS</b>\n\n"
             
-            if self.auto_quote_system:
-                fact = await self.auto_quote_system.get_random_fact()
-                await message.reply_html(fact)
-            else:
-                facts = [
-                    "Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly good to eat.",
-                    "Octopuses have three hearts."
-                ]
-                await message.reply_text(random.choice(facts))
+            medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+            
+            for idx, (user_id, username, roast_count) in enumerate(top_users):
+                if idx < len(medals):
+                    medal = medals[idx]
+                else:
+                    medal = "🏅"
                 
+                leaderboard_text += f"{medal} @{username or 'user'} - {roast_count} roasts\n"
+            
+            leaderboard_text += f"\n<b>💡 Tip:</b> Chat more to climb the ranks!"
+            
+            await update.message.reply_html(leaderboard_text)
+            
         except Exception as e:
-            self.logger.error(f"Error in fact_command: {e}")
+            self.logger.error(f"Error in leaderboard: {e}")
     
-    async def invite_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _handle_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /settings command"""
+        settings_text = f"""
+<b>⚙️ BOT SETTINGS</b>
+
+<b>📱 Current Configuration:</b>
+• Reply Mode: Image + Text
+• Image Quality: {self.config.IMAGE_QUALITY}%
+• Cooldown: {self.cooldown_manager.user_cooldown} seconds
+• Max Message Length: {self.config.MAX_MESSAGE_LENGTH}
+
+<b>🎨 Image Settings:</b>
+• Size: {self.config.IMAGE_SIZE[0]}x{self.config.IMAGE_SIZE[1]}
+• Profile Pictures: {'Enabled' if self.config.USE_PROFILE_PIC else 'Disabled'}
+• Watermark: {'Enabled' if self.config.ADD_WATERMARK else 'Disabled'}
+
+<b>🛡️ Safety Settings:</b>
+• Content Filter: Active
+• Spam Protection: Active
+• Admin Protection: Active
+
+<b>📊 Performance:</b>
+• Active Chats: {len(self.stats['active_chats']):,}
+• Messages Processed: {self.stats['total_messages']:,}
+• Uptime: {str(datetime.now() - self.stats['start_time']).split('.')[0]}
+
+<b>⚠️ Settings can only be changed by admin.</b>
+        """
+        
+        await update.message.reply_html(settings_text)
+    
+    async def _handle_invite(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /invite command"""
         try:
-            message = update.message or update.callback_query.message
-            bot_username = (await self.application.bot.get_me()).username
+            bot_info = await context.bot.get_me()
+            bot_username = bot_info.username
             
             invite_text = f"""
-<b>📢 INVITE THIS BOT</b>
+<b>📢 INVITE ROASTIFY PRO</b>
 
-Add me to your groups:
-https://t.me/{bot_username}?startgroup=true
+<b>Add me to your groups:</b>
+👉 https://t.me/{bot_username}?startgroup=true
 
-Share with friends!
+<b>Features in groups:</b>
+✅ Automatic roast replies
+✅ High-quality image generation
+✅ Mention detection
+✅ Multi-language support
+✅ Unlimited groups
+
+<b>Why choose Roastify Pro?</b>
+• Professional image design
+• Fast response time
+• Reliable performance
+• Regular updates
+
+<b>Share with friends:</b>
+https://t.me/{bot_username}
+
+<b>Group admin? No configuration needed!</b>
             """
             
-            await message.reply_html(invite_text)
+            keyboard = [
+                [InlineKeyboardButton("➕ Add to Group", 
+                 url=f"https://t.me/{bot_username}?startgroup=true")],
+                [InlineKeyboardButton("📱 Share Bot", 
+                 url=f"https://t.me/share/url?url=https://t.me/{bot_username}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_html(invite_text, reply_markup=reply_markup)
             
         except Exception as e:
-            self.logger.error(f"Error in invite_command: {e}")
+            self.logger.error(f"Error in invite: {e}")
     
-    async def support_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _handle_support(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /support command"""
-        try:
-            message = update.message or update.callback_query.message
-            
-            support_text = """
-<b>🆘 SUPPORT</b>
+        support_text = """
+<b>🆘 SUPPORT & HELP</b>
 
-Need help? Contact the developer.
+<b>Common Issues:</b>
+• Bot not replying? Check if it's added as admin
+• No images? Check bot permissions
+• Error messages? Try /start
 
-Common issues:
-1. Bot not responding? Try /start
-2. Commands not working? Check /help
-3. Rate limited? Wait a few seconds
-            """
-            
-            await message.reply_html(support_text)
-            
-        except Exception as e:
-            self.logger.error(f"Error in support_command: {e}")
+<b>Bot Permissions Needed:</b>
+✅ Send Messages
+✅ Send Media
+✅ Read Messages
+
+<b>Contact Support:</b>
+• Report bugs
+• Feature requests
+• General help
+
+<b>Developer:</b> @RanaDeveloper
+
+<b>Bot Status:</b> ✅ Online
+<b>Response Time:</b> < 1 second
+
+<b>Note:</b> This bot is for entertainment purposes only!
+        """
+        
+        await update.message.reply_html(support_text)
     
-    # ========== CALLBACK QUERY HANDLER ==========
-    async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ========== OTHER HANDLERS ==========
+    async def _handle_new_members(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle new members joining"""
+        try:
+            await self.welcome.handle_new_members(update, context)
+        except Exception as e:
+            self.logger.error(f"Error in new members: {e}")
+    
+    async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle callback queries"""
         try:
             query = update.callback_query
@@ -641,150 +803,107 @@ Common issues:
             
             data = query.data
             
-            if data == "create_roast":
-                await query.message.reply_text("Send me a name to roast!\nExample: John")
-            elif data == "my_stats":
-                await self.stats_command(update, context)
-            elif data == "help_menu":
-                await self.help_command(update, context)
-            elif data.startswith("another:"):
-                target_name = data.split(":", 1)[1]
-                roast_text = self.generate_roast(target_name)
+            if data == "add_to_group":
+                bot_info = await context.bot.get_me()
+                await query.message.reply_text(
+                    f"Add me to group:\n\n"
+                    f"https://t.me/{bot_info.username}?startgroup=true"
+                )
+            
+            elif data == "bot_stats":
+                await self._handle_stats(update, context)
+            
+            elif data == "try_roast":
+                user = update.effective_user
+                roast_text = self.roaster.generate_roast(user.first_name, "Demo roast")
                 await query.message.reply_html(
-                    f"<b>Another roast for {target_name}:</b>\n\n"
+                    f"<b>Demo Roast:</b>\n\n"
                     f"<i>{roast_text}</i>"
                 )
-            else:
-                await query.message.reply_text("✅ Action completed!")
-                
-        except Exception as e:
-            self.logger.error(f"Error in handle_callback_query: {e}")
-            try:
-                await query.answer("❌ Error processing request")
-            except:
-                pass
-    
-    # ========== MESSAGE HANDLER ==========
-    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle text messages"""
-        try:
-            text = update.message.text
-            user = update.effective_user
             
-            if text.lower() in ['hi', 'hello', 'hey']:
-                await update.message.reply_text(f"👋 Hello {user.first_name}! Use /help for commands.")
-            elif 'roast' in text.lower():
-                await update.message.reply_text("Use /roast [name] to roast someone!\nExample: /roast John")
-            else:
-                await update.message.reply_text(f"Hi {user.first_name}! I'm Roastify Bot. Use /help for commands.")
-                
         except Exception as e:
-            self.logger.error(f"Error in handle_text_message: {e}")
+            self.logger.error(f"Error in callback: {e}")
     
-    # ========== ERROR HANDLER ==========
-    async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _handle_error(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors"""
         try:
             error = context.error
-            self.logger.error(f"Bot error: {error}")
-            
-            # Don't send error message to users
-            # Just log it
-            
-        except Exception as e:
-            self.logger.error(f"Error in error_handler: {e}")
-    
-    # ========== UTILITY METHODS ==========
-    def update_roast_stats(self, user_id: int, target_name: str):
-        """Update roast statistics"""
-        try:
-            # Update user data
-            today = datetime.now().date()
-            if user_id not in self.user_data_cache:
-                self.user_data_cache[user_id] = {'date': today, 'count': 0}
-            
-            user_data = self.user_data_cache[user_id]
-            if user_data.get('date') != today:
-                user_data['date'] = today
-                user_data['count'] = 0
-            
-            user_data['count'] += 1
-            
-            # Update bot stats
-            self.stats['total_roasts'] += 1
-            self.stats['today_roasts'] += 1
-            self.roast_counters[user_id] = self.roast_counters.get(user_id, 0) + 1
-            
-            self.logger.info(f"Roast generated by {user_id} for {target_name}")
-            
-        except Exception as e:
-            self.logger.error(f"Error updating stats: {e}")
+            self.logger.error(f"Bot error: {error}", exc_info=True)
+        except:
+            pass
     
     # ========== BOT CONTROL ==========
-    async def start_bot(self):
+    async def start(self):
         """Start the bot"""
+        self.logger.info("🤖 Starting Roastify Bot Pro...")
+        
         try:
-            self.logger.info("🤖 Starting Roastify Bot...")
+            # Create necessary directories
+            for directory in ['logs', 'generated', 'temp', 'data']:
+                Path(directory).mkdir(exist_ok=True)
+            
+            # Start bot
             await self.application.initialize()
             await self.application.start()
-            await self.application.updater.start_polling()
             
-            self.logger.info("✅ Bot is now running! Press Ctrl+C to stop.")
-            print("\n✅ Bot started successfully! Press Ctrl+C to stop.")
+            # Get bot info
+            bot_info = await self.application.bot.get_me()
+            self.config.BOT_USERNAME = bot_info.username
+            
+            self.logger.info(f"✅ Bot started as @{bot_info.username}")
+            print("\n" + "="*50)
+            print("🎉 ROASTIFY BOT PRO - STARTED SUCCESSFULLY!")
+            print("="*50)
+            print(f"🤖 Username: @{bot_info.username}")
+            print(f"🚀 Version: {self.config.VERSION}")
+            print(f"📊 Mode: IMAGE + TEXT replies")
+            print(f"👥 Supports: Unlimited groups")
+            print(f"🛑 Press Ctrl+C to stop")
+            print("="*50 + "\n")
+            
+            # Start polling
+            await self.application.updater.start_polling()
             
             # Keep running
             await asyncio.Event().wait()
             
+        except KeyboardInterrupt:
+            self.logger.info("🛑 Bot stopped by user")
+            print("\n🛑 Bot stopped by user")
         except Exception as e:
             self.logger.error(f"❌ Failed to start bot: {e}")
-            print(f"\n❌ Failed to start bot: {e}")
             raise
     
-    async def stop_bot(self):
+    async def stop(self):
         """Stop the bot"""
+        self.logger.info("🛑 Stopping bot...")
+        
         try:
-            self.logger.info("🛑 Stopping bot...")
-            
-            if hasattr(self, 'application') and self.application:
+            if hasattr(self, 'application') and self.application.running:
                 await self.application.stop()
                 await self.application.shutdown()
             
-            self.logger.info("👋 Bot stopped successfully!")
+            self.logger.info("👋 Bot stopped successfully")
             
         except Exception as e:
             self.logger.error(f"Error stopping bot: {e}")
     
     def run(self):
-        """Run the bot (for main.py)"""
+        """Run the bot (blocking)"""
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            self.logger.info("🚀 Starting bot via run()...")
-            
-            try:
-                loop.run_until_complete(self.start_bot())
-            except KeyboardInterrupt:
-                print("\n🛑 Bot stopped by user")
-            finally:
-                try:
-                    loop.run_until_complete(self.stop_bot())
-                finally:
-                    loop.close()
-                    
+            asyncio.run(self.start())
+        except KeyboardInterrupt:
+            print("\n🛑 Bot stopped by user")
         except Exception as e:
-            self.logger.error(f"Fatal error in run(): {e}")
+            self.logger.error(f"Fatal error: {e}")
             print(f"\n❌ Fatal error: {e}")
-            sys.exit(1)
 
 
-# Direct execution
+# ========== MAIN ENTRY POINT ==========
 if __name__ == "__main__":
     try:
         bot = RoastifyBot()
         bot.run()
-    except KeyboardInterrupt:
-        print("\n🛑 Bot stopped by user")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Failed to start bot: {e}")
         sys.exit(1)
