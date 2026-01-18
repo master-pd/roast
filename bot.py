@@ -12,6 +12,7 @@ import traceback
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from io import BytesIO
+from features.auto_quotes import AutoQuotes
 
 # Telegram imports
 from telegram import (
